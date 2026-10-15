@@ -3,11 +3,15 @@
 //
 //   node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16]
 //                   [--preview] [--music FILE] [--volume 0.5] [--fps 30] [--check]
-//                   [--list-icons]
+//                   [--flow FLOW.md] [--list-icons]
+//
+// When FLOW.md sits next to the storyboard (or --flow is given), every storyboard "ref" is
+// checked against it and every branch in its branch index must be shown or listed in "omitted".
 import { readFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadFlow, flowIds, defaultFlowPath } from './flowdoc.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENGINE = pathToFileURL(join(HERE, 'engine', 'index.html')).href;
@@ -28,6 +32,7 @@ function parseArgs(argv) {
     else if (a === '--music') opts.music = next();
     else if (a === '--volume') opts.volume = Number(next());
     else if (a === '--fps') opts.fps = Number(next());
+    else if (a === '--flow') opts.flow = next();
     else if (a === '--list-icons') opts.listIcons = true;
     else if (a === '--help' || a === '-h') opts.help = true;
     else rest.push(a);
@@ -36,8 +41,19 @@ function parseArgs(argv) {
   return opts;
 }
 
+const asList = (r) => (r === undefined ? [] : Array.isArray(r) ? r : [r]);
+// Every object that may carry a "ref" to FLOW.md ids, with a name for messages.
+const refHolders = (sb) => [
+  ['storyboard', sb],
+  ...(sb.nodes || []).map((n) => [`node "${n.id}"`, n]),
+  ...(sb.edges || []).map((e) => [`edge ${e.from} -> ${e.to}`, e]),
+  ...(sb.scenes || []).map((s, i) => [`scenes[${i}]`, s]),
+  ...(sb.outro ? [['outro', sb.outro]] : []),
+];
+
 // Returns a list of human-readable problems; empty means the storyboard is renderable.
-export function validate(sb) {
+// `flow` is a parsed FLOW.md (flowdoc.parseFlow) or null when none is available.
+export function validate(sb, flow = null) {
   const errs = [];
   if (!sb || typeof sb !== 'object') return ['storyboard must be a JSON object'];
   if (!sb.title) errs.push('missing "title"');
@@ -65,6 +81,11 @@ export function validate(sb) {
     if (e.from === e.to) errs.push(`edges[${i}]: self-loop on "${e.from}" is not drawable; add a separate retry node`);
     edgeKeys.add(`${e.from}->${e.to}`);
   });
+  sb.nodes.forEach((n) => {
+    if (n.kind !== 'decision') return;
+    const out = (sb.edges || []).filter((e) => e.from === n.id).length;
+    if (out < 2) errs.push(`decision "${n.id}" has ${out} outgoing edge(s); a decision needs every outcome drawn (add an outcome node such as "Rejected")`);
+  });
 
   const revealed = new Set();
   sb.scenes.forEach((s, i) => {
@@ -87,11 +108,86 @@ export function validate(sb) {
     if (s.hold !== undefined && !(s.hold >= 0)) errs.push(`${at}.hold must be a number >= 0`);
   });
   if (!revealed.size) errs.push('no scene reveals any node');
+
+  if (sb.omitted !== undefined && !Array.isArray(sb.omitted)) errs.push('"omitted" must be an array of { "ref", "reason" }');
+  const omitted = Array.isArray(sb.omitted) ? sb.omitted : [];
+  omitted.forEach((o, i) => {
+    if (!o || !o.ref) errs.push(`omitted[${i}]: missing "ref"`);
+    if (!o || !o.reason) errs.push(`omitted[${i}]: missing "reason" (say why the viewer does not need it)`);
+  });
+  if (flow) {
+    const known = flowIds(flow);
+    const used = new Set();
+    for (const [name, obj] of refHolders(sb)) {
+      asList(obj.ref).forEach((id) => {
+        if (!known.has(id)) errs.push(`${name}: ref "${id}" is not a step or branch id in FLOW.md`);
+        used.add(id);
+      });
+    }
+    omitted.forEach((o, i) => { if (o && o.ref && !known.has(o.ref)) errs.push(`omitted[${i}]: ref "${o.ref}" is not in FLOW.md`); });
+    const omittedIds = new Set(omitted.map((o) => o && o.ref));
+    for (const id of flow.branches.keys()) {
+      if (!used.has(id) && !omittedIds.has(id)) errs.push(`branch ${id} from FLOW.md is neither shown (no "ref": "${id}") nor listed in "omitted"`);
+    }
+  }
   return errs;
 }
 
-function softWarnings(sb) {
+// Captions are where plain-language translation invents facts: speed, security, absolutes.
+const CLAIM_PATTERNS = [
+  /\binstant(ly)?\b/i, /\breal[- ]time\b/i, /\bnever\b/i, /\balways\b/i, /\bguarantee[ds]?\b/i,
+  /\b100\s?%/, /\bzero\b/i, /\bsecure(ly)?\b/i, /\bbank[- ]grade\b/i, /\bfully\b/i,
+  /\b\d+(\.\d+)?\s*(ms|milliseconds?|seconds?|minutes?|hours?|days?|%|x faster|times faster)\b/i,
+  /\b(under|within|in) (a |an |one |a few |few |\d+ )?(seconds?|minutes?|hours?)\b/i,
+];
+const claimIn = (text) => { for (const re of CLAIM_PATTERNS) { const m = (text || '').match(re); if (m) return m[0]; } return null; };
+
+function structureWarnings(sb) {
   const w = [];
+  const edges = sb.edges || [];
+  const byId = new Map(sb.nodes.map((n) => [n.id, n]));
+  const flowed = new Set(sb.scenes.flatMap((s) => (s.flow || []).map(([a, b]) => `${a}->${b}`)));
+  edges.forEach((e) => {
+    if (byId.get(e.from)?.kind !== 'decision') return;
+    if (!e.label) w.push(`edge ${e.from} -> ${e.to} leaves a decision but has no label; name the condition ("yes", "too risky")`);
+    if (!flowed.has(`${e.from}->${e.to}`)) w.push(`decision outcome ${e.from} -> ${e.to} never carries a packet in any scene's "flow"; show every option`);
+  });
+  const actors = sb.nodes.filter((n) => n.kind === 'actor').map((n) => n.id);
+  if (actors.length) {
+    const seen = new Set(actors), queue = [...actors];
+    while (queue.length) {
+      const id = queue.shift();
+      edges.forEach((e) => { if (e.from === id && !seen.has(e.to)) { seen.add(e.to); queue.push(e.to); } });
+    }
+    sb.nodes.forEach((n) => { if (!seen.has(n.id)) w.push(`node "${n.id}" cannot be reached from any actor; check its edges match the code's data flow`); });
+  }
+  return w;
+}
+
+function accuracyWarnings(sb, flow) {
+  const w = [];
+  const hasRef = (o) => asList(o.ref).length > 0;
+  const texts = [['subtitle', sb, sb.subtitle], ['outro', sb.outro || {}, sb.outro && `${sb.outro.caption || ''} ${sb.outro.cta || ''}`]];
+  sb.nodes.forEach((n) => texts.push([`node "${n.id}"`, n, `${n.label} ${n.sub || ''}`]));
+  sb.scenes.forEach((s, i) => texts.push([`scene ${i + 1}`, s, `${s.title || ''} ${s.caption}`]));
+  for (const [name, obj, text] of texts) {
+    const claim = claimIn(text);
+    if (claim && !hasRef(obj)) w.push(`${name}: "${claim}" is a speed/security/absolute claim; keep it only if FLOW.md cites code for it (add "ref"), otherwise remove it`);
+  }
+  if (flow) {
+    sb.nodes.forEach((n) => {
+      if (n.kind === 'actor') return;
+      if (!hasRef(n)) w.push(`node "${n.id}" has no "ref" to a FLOW.md step or branch`);
+      else if (n.kind === 'decision' && !asList(n.ref).some((id) => flow.branches.has(id))) w.push(`decision "${n.id}" should ref a branch id (B<n>) from FLOW.md`);
+    });
+  } else if (refHolders(sb).some(([, o]) => hasRef(o)) || sb.omitted) {
+    w.push('storyboard has refs but no FLOW.md was found next to it; refs were not checked (pass --flow FLOW.md)');
+  }
+  return w;
+}
+
+export function softWarnings(sb, flow = null) {
+  const w = [...structureWarnings(sb), ...accuracyWarnings(sb, flow)];
   const revealed = new Set(sb.scenes.flatMap((s) => s.reveal || []));
   sb.nodes.forEach((n) => { if (!revealed.has(n.id)) w.push(`node "${n.id}" is never revealed in a scene; it only appears in the outro`); });
   sb.scenes.forEach((s, i) => {
@@ -200,7 +296,7 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.listIcons) { console.log(Object.keys(ICONS).join('\n')); return; }
   if (opts.help || !opts.storyboard) {
-    console.log('Usage: node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16] [--preview] [--check] [--music FILE] [--volume 0.5] [--fps 30] [--list-icons]');
+    console.log('Usage: node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16] [--preview] [--check] [--music FILE] [--volume 0.5] [--fps 30] [--flow FLOW.md] [--list-icons]');
     process.exit(opts.help ? 0 : 1);
   }
   const sbPath = resolve(opts.storyboard);
@@ -208,7 +304,12 @@ async function main() {
   let sb;
   try { sb = JSON.parse(readFileSync(sbPath, 'utf8')); } catch (e) { fail(`invalid JSON in ${sbPath}: ${e.message}`); }
 
-  const errs = validate(sb);
+  const flowPath = opts.flow ? resolve(opts.flow) : defaultFlowPath(sbPath);
+  if (opts.flow && !existsSync(flowPath)) fail(`FLOW.md not found: ${flowPath}`);
+  const flow = existsSync(flowPath) ? loadFlow(flowPath) : null;
+  if (flow) console.log(`Checking refs against ${flowPath} (${flow.steps.size} steps, ${flow.branches.size} branches)`);
+
+  const errs = validate(sb, flow);
   if (errs.length) fail(`Storyboard has ${errs.length} problem(s):\n- ${errs.join('\n- ')}`);
   const bad = opts.formats.filter((f) => !FORMATS[f]);
   if (bad.length) fail(`unknown format(s): ${bad.join(', ')} (use ${Object.keys(FORMATS).join(', ')})`);
@@ -219,7 +320,7 @@ async function main() {
 
   const outDir = resolve(opts.out || dirname(sbPath));
   mkdirSync(outDir, { recursive: true });
-  softWarnings(sb).forEach((w) => console.log(`WARN ${w}`));
+  softWarnings(sb, flow).forEach((w) => console.log(`WARN ${w}`));
 
   const chromium = await loadPlaywright();
   const browser = await chromium.launch();

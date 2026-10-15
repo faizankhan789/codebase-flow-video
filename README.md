@@ -6,7 +6,7 @@ A Claude Code skill that reads a codebase end to end and turns its pipeline into
 - `flow-1x1.mp4`: square, for the LinkedIn feed
 - `flow-9x16.mp4`: vertical, for Reels, Shorts and Stories
 
-It also writes `FLOW.md`, a technical map of every pipeline, step and branch with `file:line` references.
+It also writes `FLOW.md`, a technical map of every pipeline, step and branch with `file:line` references and the exact code quoted at each one.
 
 ## Install
 
@@ -41,9 +41,10 @@ Everything is saved to `flow-video/` in that repository. Add `flow-video/` to `.
 
 ## How it works
 
-1. Claude traces the code from each entry point to its outputs and records every step and branch in `FLOW.md`.
-2. Claude writes `storyboard.json`: plain-language scenes for a non-technical viewer.
-3. The bundled renderer (`skills/codebase-flow-video/renderer/`) lays out the flow, animates nodes, arrows, data packets, branches and camera moves, and captures frames in headless Chromium. ffmpeg encodes them to H.264 MP4.
+1. Claude greps for every entry point, traces each one to its outputs and records every step and branch in `FLOW.md`, quoting the code behind each claim.
+2. Accuracy checks: `verify-flow.mjs` confirms every cited file, line and quote exists in the code, and a fresh subagent re-checks what each claim means. A `Coverage` section reconciles grep inventories (entry points, branch sites, config reads, external clients) so nothing is silently skipped.
+3. Claude writes `storyboard.json`: plain-language scenes for a non-technical viewer. Each box points back to a `FLOW.md` step; the renderer refuses to render if a branch is neither shown nor deliberately omitted, and flags speed or security claims that no code backs.
+4. The bundled renderer (`skills/codebase-flow-video/renderer/`) lays out the flow, animates nodes, arrows, data packets, branches and camera moves, and captures frames in headless Chromium. ffmpeg encodes them to H.264 MP4.
 
 Video length follows the codebase: each scene lasts as long as its animation and caption need.
 
@@ -53,6 +54,7 @@ You can also run the renderer by hand from a clone of this repo:
 cd skills/codebase-flow-video
 bash renderer/setup.sh
 node renderer/render.mjs examples/storyboard.example.json --out /tmp/demo
+node renderer/verify-flow.mjs path/to/repo/flow-video/FLOW.md   # check a FLOW.md against its repo
 ```
 
 ## License

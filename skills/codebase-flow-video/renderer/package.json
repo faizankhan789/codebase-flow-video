@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Renders a storyboard.json into animated MP4 videos (16:9, 1:1, 9:16).",
-  "bin": { "flow-render": "render.mjs" },
+  "bin": { "flow-render": "render.mjs", "flow-verify": "verify-flow.mjs" },
   "dependencies": {
     "playwright": "1.63.0"
   },

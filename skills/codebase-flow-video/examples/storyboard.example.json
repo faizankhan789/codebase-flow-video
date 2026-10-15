@@ -5,28 +5,28 @@
   "accent": "#7C5CFF",
   "nodes": [
     { "id": "supplier", "label": "Supplier sends invoice", "sub": "Email or upload", "kind": "actor", "icon": "mail" },
-    { "id": "inbox", "label": "Inbox collector", "sub": "Checks mailbox every minute", "kind": "step", "icon": "download" },
-    { "id": "storage", "label": "Secure file storage", "sub": "Original PDF kept", "kind": "store", "icon": "folder" },
-    { "id": "reader", "label": "AI reads the invoice", "sub": "Amounts, dates, line items", "kind": "ai" },
-    { "id": "confident", "label": "Is the AI sure?", "kind": "decision" },
-    { "id": "review", "label": "Finance team reviews", "sub": "Fix fields in one click", "kind": "actor", "icon": "users" },
-    { "id": "match", "label": "Match to purchase order", "kind": "step", "icon": "link" },
-    { "id": "matched", "label": "Does it match?", "kind": "decision" },
-    { "id": "dispute", "label": "Ask supplier to correct", "kind": "step", "icon": "send" },
-    { "id": "ledger", "label": "Accounting system", "sub": "Xero / QuickBooks", "kind": "external", "icon": "chart" },
-    { "id": "pay", "label": "Payment scheduled", "kind": "output", "icon": "dollar" }
+    { "id": "inbox", "label": "Inbox collector", "sub": "Checks mailbox every minute", "kind": "step", "icon": "download", "ref": "P1.1" },
+    { "id": "storage", "label": "File storage", "sub": "Original PDF kept", "kind": "store", "icon": "folder", "ref": "P1.2" },
+    { "id": "reader", "label": "AI reads the invoice", "sub": "Amounts, dates, line items", "kind": "ai", "ref": "P1.3" },
+    { "id": "confident", "label": "Is the AI sure?", "kind": "decision", "ref": "B1" },
+    { "id": "review", "label": "Finance team reviews", "sub": "Fix fields in one click", "kind": "actor", "icon": "users", "ref": "P1.4" },
+    { "id": "match", "label": "Match to purchase order", "kind": "step", "icon": "link", "ref": "P1.5" },
+    { "id": "matched", "label": "Does it match?", "kind": "decision", "ref": "B2" },
+    { "id": "dispute", "label": "Ask supplier to correct", "kind": "step", "icon": "send", "ref": "P1.6" },
+    { "id": "ledger", "label": "Accounting system", "sub": "Xero / QuickBooks", "kind": "external", "icon": "chart", "ref": "P1.7" },
+    { "id": "pay", "label": "Payment scheduled", "kind": "output", "icon": "dollar", "ref": "P1.8" }
   ],
   "edges": [
     { "from": "supplier", "to": "inbox" },
     { "from": "inbox", "to": "storage" },
     { "from": "storage", "to": "reader" },
     { "from": "reader", "to": "confident" },
-    { "from": "confident", "to": "match", "label": "yes" },
-    { "from": "confident", "to": "review", "label": "not sure" },
+    { "from": "confident", "to": "match", "label": "yes", "ref": "B1" },
+    { "from": "confident", "to": "review", "label": "not sure", "ref": "B1" },
     { "from": "review", "to": "match" },
     { "from": "match", "to": "matched" },
-    { "from": "matched", "to": "ledger", "label": "yes" },
-    { "from": "matched", "to": "dispute", "label": "no" },
+    { "from": "matched", "to": "ledger", "label": "yes", "ref": "B2" },
+    { "from": "matched", "to": "dispute", "label": "no", "ref": "B2" },
     { "from": "dispute", "to": "inbox", "label": "new invoice" },
     { "from": "ledger", "to": "pay" }
   ],
@@ -39,7 +39,7 @@
     },
     {
       "title": "Nothing gets lost",
-      "caption": "The original PDF is stored safely, so there is always a copy to audit later.",
+      "caption": "The original PDF is stored safely, so there is a copy to audit later.",
       "reveal": ["storage"],
       "flow": [["inbox", "storage"]],
       "focus": ["inbox", "storage"]
@@ -79,8 +79,11 @@
       "focus": ["matched", "ledger", "pay"]
     }
   ],
+  "omitted": [
+    { "ref": "B3", "reason": "internal retry when the accounting system is briefly down; no business decision" }
+  ],
   "outro": {
-    "caption": "From inbox to payment in under a minute, with a human in the loop only when it matters.",
+    "caption": "From inbox to payment, with a human in the loop only when it matters.",
     "cta": "Every invoice, read, checked and paid automatically."
   }
 }
