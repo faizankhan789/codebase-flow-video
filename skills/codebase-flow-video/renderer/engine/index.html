@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  #stage { position: relative; overflow: hidden; }
+  #stage > svg { position: absolute; inset: 0; display: block; }
+  .overlay { position: absolute; pointer-events: none; }
+  #header { left: 4%; top: 3.2%; font-weight: 600; letter-spacing: .02em; display: flex; align-items: center; gap: .6em; }
+  #header .dot { width: .55em; height: .55em; border-radius: 50%; }
+  #captionBox { left: 5%; right: 5%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  #captionPanel { padding: .7em 1.1em; border-radius: .6em; max-width: 100%; box-sizing: border-box; }
+  #kicker { font-weight: 700; letter-spacing: .14em; text-transform: uppercase; margin-bottom: .45em; }
+  #caption { font-weight: 600; line-height: 1.28; }
+  #progress { left: 0; bottom: 0; height: 6px; }
+  .card { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 8%; box-sizing: border-box; }
+  .card h1 { margin: 0; font-weight: 800; line-height: 1.08; letter-spacing: -.02em; }
+  .card p { margin: .7em 0 0; font-weight: 500; line-height: 1.35; }
+  .card .rule { height: 6px; border-radius: 3px; margin: .9em auto 0; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="engine.js"></script>
+</body>
+</html>

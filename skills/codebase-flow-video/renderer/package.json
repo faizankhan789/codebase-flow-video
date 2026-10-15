@@ -1,0 +1,12 @@
+{
+  "name": "codebase-flow-video-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Renders a storyboard.json into animated MP4 videos (16:9, 1:1, 9:16).",
+  "bin": { "flow-render": "render.mjs" },
+  "dependencies": {
+    "playwright": "1.63.0"
+  },
+  "license": "MIT"
+}

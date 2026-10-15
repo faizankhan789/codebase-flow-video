@@ -1,0 +1,10 @@
+{
+  "name": "codebase-flow-video",
+  "version": "1.0.0",
+  "description": "Understands a codebase end to end (every pipeline, step and branch) and turns it into an animated explainer video in 16:9, 1:1 and 9:16 for clients, executives and LinkedIn.",
+  "author": {
+    "name": "Faizan Khan"
+  },
+  "license": "MIT",
+  "keywords": ["video", "animation", "architecture", "documentation", "onboarding", "linkedin"]
+}

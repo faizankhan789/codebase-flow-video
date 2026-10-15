@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "codebase-flow-video",
+  "description": "Animated end-to-end explainer videos of any codebase.",
+  "owner": {
+    "name": "Faizan Khan"
+  },
+  "plugins": [
+    {
+      "name": "codebase-flow-video",
+      "description": "Understands a codebase end to end and turns its pipeline into an animated explainer video (16:9, 1:1, 9:16).",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

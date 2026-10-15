@@ -1,0 +1,86 @@
+{
+  "title": "InvoiceFlow",
+  "subtitle": "How a supplier invoice becomes a scheduled payment, with no manual typing",
+  "theme": "dark",
+  "accent": "#7C5CFF",
+  "nodes": [
+    { "id": "supplier", "label": "Supplier sends invoice", "sub": "Email or upload", "kind": "actor", "icon": "mail" },
+    { "id": "inbox", "label": "Inbox collector", "sub": "Checks mailbox every minute", "kind": "step", "icon": "download" },
+    { "id": "storage", "label": "Secure file storage", "sub": "Original PDF kept", "kind": "store", "icon": "folder" },
+    { "id": "reader", "label": "AI reads the invoice", "sub": "Amounts, dates, line items", "kind": "ai" },
+    { "id": "confident", "label": "Is the AI sure?", "kind": "decision" },
+    { "id": "review", "label": "Finance team reviews", "sub": "Fix fields in one click", "kind": "actor", "icon": "users" },
+    { "id": "match", "label": "Match to purchase order", "kind": "step", "icon": "link" },
+    { "id": "matched", "label": "Does it match?", "kind": "decision" },
+    { "id": "dispute", "label": "Ask supplier to correct", "kind": "step", "icon": "send" },
+    { "id": "ledger", "label": "Accounting system", "sub": "Xero / QuickBooks", "kind": "external", "icon": "chart" },
+    { "id": "pay", "label": "Payment scheduled", "kind": "output", "icon": "dollar" }
+  ],
+  "edges": [
+    { "from": "supplier", "to": "inbox" },
+    { "from": "inbox", "to": "storage" },
+    { "from": "storage", "to": "reader" },
+    { "from": "reader", "to": "confident" },
+    { "from": "confident", "to": "match", "label": "yes" },
+    { "from": "confident", "to": "review", "label": "not sure" },
+    { "from": "review", "to": "match" },
+    { "from": "match", "to": "matched" },
+    { "from": "matched", "to": "ledger", "label": "yes" },
+    { "from": "matched", "to": "dispute", "label": "no" },
+    { "from": "dispute", "to": "inbox", "label": "new invoice" },
+    { "from": "ledger", "to": "pay" }
+  ],
+  "scenes": [
+    {
+      "title": "It starts with an email",
+      "caption": "A supplier emails an invoice. InvoiceFlow picks it up automatically, so nobody has to forward anything.",
+      "reveal": ["supplier", "inbox"],
+      "flow": [["supplier", "inbox"]]
+    },
+    {
+      "title": "Nothing gets lost",
+      "caption": "The original PDF is stored safely, so there is always a copy to audit later.",
+      "reveal": ["storage"],
+      "flow": [["inbox", "storage"]],
+      "focus": ["inbox", "storage"]
+    },
+    {
+      "title": "AI does the typing",
+      "caption": "An AI model reads the invoice and pulls out the supplier, amounts, dates and every line item.",
+      "reveal": ["reader"],
+      "flow": [["storage", "reader"]],
+      "focus": ["storage", "reader"]
+    },
+    {
+      "title": "A safety check",
+      "caption": "If the AI is confident, the invoice moves on. If not, a person on the finance team checks it first.",
+      "reveal": ["confident", "review", "match"],
+      "flow": [["reader", "confident"], ["confident", "match"], ["confident", "review"], ["review", "match"]],
+      "focus": ["reader", "confident", "review", "match"]
+    },
+    {
+      "title": "Only pay for what you ordered",
+      "caption": "Next it is matched to the original purchase order, so you only pay for what you actually ordered.",
+      "reveal": ["matched", "dispute", "ledger"],
+      "flow": [["match", "matched"], ["matched", "ledger"], ["matched", "dispute"]],
+      "focus": ["match", "matched", "dispute", "ledger"]
+    },
+    {
+      "title": "Mistakes get fixed at the source",
+      "caption": "Mismatches go back to the supplier, and their corrected invoice re-enters the same pipeline.",
+      "flow": [["dispute", "inbox"]],
+      "focus": ["matched", "dispute"]
+    },
+    {
+      "title": "Done",
+      "caption": "Approved invoices land in your accounting system and the payment is scheduled.",
+      "reveal": ["pay"],
+      "flow": [["matched", "ledger"], ["ledger", "pay"]],
+      "focus": ["matched", "ledger", "pay"]
+    }
+  ],
+  "outro": {
+    "caption": "From inbox to payment in under a minute, with a human in the loop only when it matters.",
+    "cta": "Every invoice, read, checked and paid automatically."
+  }
+}
