@@ -58,6 +58,12 @@ test('branches lists each decision in a function with its code', () => {
   assert.match(text(Q.branches(g, 'run_tool')), /match\s+match name:/);
 });
 
+test('slice only reads source files inside the indexed repo', () => {
+  assert.match(Q.slice(g, ROOT, '../../graph.test.mjs:1-2')[0], /outside the repository/);
+  assert.match(Q.slice(g, ROOT, 'web/package.json:1')[0], /not a source file/);
+  assert.match(Q.slice(g, ROOT, 'web/routes/orders.js:4-4')[0], /placeOrder/);
+});
+
 test('compact storage round-trips and unchanged files are not re-parsed', async () => {
   const back = Q.prepare(unpack(JSON.parse(JSON.stringify(pack(g)))));
   assert.equal(back.defs.length, g.defs.length);

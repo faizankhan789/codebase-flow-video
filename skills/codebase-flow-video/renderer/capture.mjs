@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Captures real screenshots of a running app for "screen" scenes.
 //
-//   node capture.mjs flow-video/screens.json [--allow-remote] [--dry-run]
+//   node capture.mjs flow-video/screens.json [--yes] [--allow-remote] [--dry-run]
+//
+// "start" runs a command from the config file, so it only runs with --yes (after the user approved it).
+// It is split into arguments and run without a shell; shell operators are rejected.
 //
 // screens.json (paths relative to the repo root, which is the folder above flow-video/):
 // {
@@ -20,11 +23,12 @@
 // }
 // Writes flow-video/screens/<id>.png and flow-video/screens/manifest.json (sizes and highlight boxes as fractions).
 import { readFileSync, writeFileSync, mkdirSync, existsSync, openSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const LOCAL = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|[\w-]+\.local|[\w-]+\.test|[\w-]+\.localhost)$/i;
+const SHELL_META = /[;&|`$<>\\\n\r(){}*?!~]/;
 const PHONE = { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true };
 
 function fail(msg) { console.error(msg); process.exit(1); }
@@ -33,15 +37,21 @@ export function validateConfig(cfg) {
   const e = [];
   if (!cfg || typeof cfg !== 'object') return ['screens.json must be an object'];
   if (!cfg.url || !/^https?:\/\//.test(cfg.url)) e.push('"url" must be an http(s) URL, e.g. "http://localhost:3000"');
+  if (cfg.start !== undefined && (typeof cfg.start !== 'string' || SHELL_META.test(cfg.start))) {
+    e.push('"start" must be one plain command such as "npm run dev" (no ;, &&, |, $, quotes-in-backticks or redirects)');
+  }
+  if (cfg.cwd !== undefined && (isAbsolute(cfg.cwd) || String(cfg.cwd).split(/[\\/]/).includes('..'))) e.push('"cwd" must be a folder inside the repo');
+  const sameOrigin = (u) => typeof u === 'string' && u.startsWith('/') && !u.startsWith('//') && !u.includes('\\');
   if (!Array.isArray(cfg.pages) || !cfg.pages.length) e.push('"pages" must list at least one page');
   const ids = new Set();
   (cfg.pages || []).forEach((p, i) => {
     if (!p.id || !/^[\w-]+$/.test(p.id)) e.push(`pages[${i}].id must be letters, digits, - or _`);
     if (ids.has(p.id)) e.push(`pages[${i}].id "${p.id}" is duplicated`);
     ids.add(p.id);
-    if (p.path !== undefined && !String(p.path).startsWith('/')) e.push(`pages[${i}].path must start with /`);
+    if (p.path !== undefined && !sameOrigin(p.path)) e.push(`pages[${i}].path must start with a single / (same site only)`);
     (p.actions || []).forEach((a, j) => {
       if (!['click', 'fill', 'press', 'wait', 'hover', 'select', 'goto'].some((k) => k in a)) e.push(`pages[${i}].actions[${j}]: use click, fill, press, hover, select, goto or wait`);
+      if ('goto' in a && !sameOrigin(a.goto)) e.push(`pages[${i}].actions[${j}].goto must start with a single / (same site only)`);
     });
     (p.highlights || []).forEach((h, j) => { if (!h.selector) e.push(`pages[${i}].highlights[${j}] needs "selector"`); });
   });
@@ -71,7 +81,7 @@ async function waitForUrl(url, seconds, server) {
 async function main() {
   const args = process.argv.slice(2);
   const cfgPath = args.find((a) => !a.startsWith('--'));
-  if (!cfgPath) fail('Usage: node capture.mjs flow-video/screens.json [--allow-remote] [--dry-run]');
+  if (!cfgPath) fail('Usage: node capture.mjs flow-video/screens.json [--yes] [--allow-remote] [--dry-run]');
   const abs = resolve(cfgPath);
   if (!existsSync(abs)) fail(`not found: ${abs}`);
   let cfg;
@@ -83,18 +93,29 @@ async function main() {
     fail(`${base.hostname} is not a local address. Capture a local or staging copy with demo data, or pass --allow-remote if the owner approved capturing it.`);
   }
   const repo = resolve(dirname(abs), '..');
+  // Every page the browser visits must stay on the configured site.
+  const target = (path) => {
+    const u = new URL(path || '/', base);
+    if (u.origin !== base.origin) fail(`refusing to visit ${u.href}: it is not on ${base.origin}`);
+    return u.href;
+  };
+  const cwd = resolve(repo, cfg.cwd || '.');
+  if (relative(repo, cwd).startsWith('..')) fail(`"cwd" escapes the repo: ${cwd}`);
   const outDir = join(dirname(abs), 'screens');
   if (args.includes('--dry-run')) {
-    console.log(`would run: ${cfg.start ? `${cfg.start} (in ${resolve(repo, cfg.cwd || '.')})` : '(no start command; app must already run)'}`);
-    cfg.pages.forEach((p) => console.log(`would capture ${p.id}: ${new URL(p.path || '/', base).href}`));
+    console.log(`would run: ${cfg.start ? `${cfg.start} (in ${cwd})` : '(no start command; app must already run)'}`);
+    cfg.pages.forEach((p) => console.log(`would capture ${p.id}: ${target(p.path)}`));
     return;
   }
   mkdirSync(outDir, { recursive: true });
 
   let server = null;
   if (cfg.start) {
+    if (!args.includes('--yes')) fail(`screens.json asks to run: ${cfg.start}\n  in ${cwd}\nThis executes code from the repo. Run again with --yes once the user has approved this command.`);
     const log = openSync(join(outDir, 'server.log'), 'w');
-    server = spawn(cfg.start, { cwd: resolve(repo, cfg.cwd || '.'), shell: true, detached: true, stdio: ['ignore', log, log], env: { ...process.env, ...(cfg.env || {}) } });
+    const [cmd, ...argv] = cfg.start.trim().split(/\s+/);
+    // No shell: arguments go straight to the program. Windows needs a shell to find npm.cmd and friends.
+    server = spawn(cmd, argv, { cwd, shell: process.platform === 'win32', detached: true, stdio: ['ignore', log, log], env: { ...process.env, ...(cfg.env || {}) } });
     console.log(`started: ${cfg.start} (pid ${server.pid}), waiting for ${base.href}`);
   }
   const stop = () => { if (server && server.exitCode === null) { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* already gone */ } } };
@@ -111,11 +132,11 @@ async function main() {
     const manifest = {};
     for (const p of cfg.pages) {
       const page = await context.newPage();
-      const url = new URL(p.path || '/', base).href;
+      const url = target(p.path);
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
       for (const a of p.actions || []) {
-        if (a.goto) await page.goto(new URL(a.goto, base).href, { waitUntil: 'domcontentloaded' });
+        if (a.goto) await page.goto(target(a.goto), { waitUntil: 'domcontentloaded' });
         else if (a.click) await page.locator(a.click).first().click();
         else if (a.hover) await page.locator(a.hover).first().hover();
         else if (a.fill) await page.locator(a.fill[0]).first().fill(String(a.fill[1]));

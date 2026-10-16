@@ -1,6 +1,6 @@
 // Read-only queries over graph.json. Every function returns an array of output lines; the CLI caps them.
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { resolve, relative, isAbsolute, posix } from 'node:path';
 import { isTest } from './build.mjs';
 
 export function prepare(g) {
@@ -147,7 +147,13 @@ export function branches(g, q) {
 export function slice(g, root, spec) {
   const m = spec.match(/^(.+):(\d+)(?:-(\d+))?$/);
   if (!m) return ['usage: slice path/to/file:START-END'];
-  const lines = readFileSync(join(root, m[1]), 'utf8').split('\n');
+  // Only files inside the indexed repo can be read.
+  const rel = posix.normalize(m[1].replace(/\\/g, '/')).replace(/^\.\//, '');
+  const f = resolve(root, rel);
+  const back = relative(root, f);
+  if (isAbsolute(m[1]) || back.startsWith('..') || isAbsolute(back)) return [`slice: ${m[1]} is outside the repository`];
+  if (!g.files[rel] && !g.unparsed.includes(rel)) return [`slice: ${m[1]} is not a source file in the graph (run index first)`];
+  const lines = readFileSync(f, 'utf8').split('\n');
   const a = Math.max(1, Number(m[2])), b = Math.min(lines.length, Number(m[3] || m[2]));
   return lines.slice(a - 1, b).map((l, k) => `${String(a + k).padStart(5)}  ${l}`);
 }

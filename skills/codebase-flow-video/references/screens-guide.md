@@ -33,5 +33,5 @@
    - Omit `start` if the user already runs the app. `"device": "phone"` captures a 390x844 mobile view.
    - Actions: `click`, `fill: [selector, value]`, `press: [selector, key]`, `select: [selector, value]`, `hover`, `goto`, `wait: ms`. Selectors are Playwright selectors (`text=…`, CSS, `role=button[name="Pay"]`).
    - `displayHost` sets the host shown in the browser bar instead of `localhost` (default `app`).
-3. `node <skill-dir>/renderer/capture.mjs flow-video/screens.json --dry-run`, then without `--dry-run`. It stops the app when done; server output is in `flow-video/screens/server.log`.
+3. `node <skill-dir>/renderer/capture.mjs flow-video/screens.json --dry-run` shows the exact command and pages. Show the command to the user; once they approve it, run with `--yes` (a `start` command never runs without it). `start` is one plain command run without a shell (no `;`, `&&`, `|`, `$`); every page must stay on the same site as `url`. It stops the app when done; server output is in `flow-video/screens/server.log`.
 4. Read each PNG. Paste the printed `{"type":"screen", ...}` snippet into the scene, adjust labels to plain words.

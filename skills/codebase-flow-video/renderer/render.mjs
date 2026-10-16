@@ -11,7 +11,7 @@
 // checked against it and every branch in its branch index must be shown or listed in "omitted".
 import { readFileSync, mkdirSync, existsSync, statSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { dirname, join, resolve, basename } from 'node:path';
+import { dirname, join, resolve, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadFlow, flowIds, defaultFlowPath } from './flowdoc.mjs';
 import { resolveStyle, listStyles } from './style.mjs';
@@ -233,12 +233,25 @@ async function loadPlaywright() {
 }
 
 // Style, font and screenshot paths are resolved here so the page only receives file URLs.
+// Asset paths may point anywhere inside the project the storyboard belongs to (the folder above it),
+// never outside it, and only to image or font files.
+export function assetPath(sbDir, p, exts) {
+  const base = resolve(sbDir, '..');
+  const f = resolve(sbDir, p);
+  const rel = relative(base, f);
+  if (isAbsolute(p) || rel.startsWith('..') || isAbsolute(rel)) return { error: `${p} is outside the project (${base})` };
+  if (!exts.test(f)) return { error: `${p} is not an allowed file type` };
+  return { file: f };
+}
+
 function prepareAssets(sb, sbDir) {
   const r = resolveStyle(sb, sbDir);
   const images = {}, errors = [...r.errors];
   for (const s of sb.scenes) {
     if (s.visual?.type !== 'screen' || !s.visual.src) continue;
-    const f = resolve(sbDir, s.visual.src);
+    const a = assetPath(sbDir, s.visual.src, /\.(png|jpe?g|webp|gif)$/i);
+    if (a.error) { errors.push(`screenshot ${a.error}`); continue; }
+    const f = a.file;
     if (!existsSync(f)) errors.push(`screenshot not found: ${f}`);
     else images[s.visual.src] = pathToFileURL(f).href;
   }

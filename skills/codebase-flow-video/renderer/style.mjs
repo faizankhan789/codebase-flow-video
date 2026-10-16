@@ -1,6 +1,6 @@
 // Resolves a storyboard's look: preset <- storyboard "style" overrides (usually from detect-style.mjs).
 import { readFileSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -49,7 +49,10 @@ export function resolveStyle(sb, sbDir) {
   let fontUrl = null;
   if (o.font?.file) {
     const f = resolve(sbDir, o.font.file);
-    if (!existsSync(f)) errors.push(`style.font.file not found: ${f}`);
+    const rel = relative(resolve(sbDir, '..'), f);
+    if (isAbsolute(o.font.file) || rel.startsWith('..') || isAbsolute(rel)) errors.push(`style.font.file must be inside the project: ${o.font.file}`);
+    else if (!/\.(woff2?|ttf|otf)$/i.test(f)) errors.push(`style.font.file must be a .woff2, .woff, .ttf or .otf file`);
+    else if (!existsSync(f)) errors.push(`style.font.file not found: ${f}`);
     else { fontUrl = pathToFileURL(f).href; st.font.name = 'BrandFont'; st.font.family = `"BrandFont", ${st.font.family}`; }
   } else if (o.font?.family) {
     st.font.family = `${/[\s"]/.test(o.font.family) && !o.font.family.includes(',') ? `"${o.font.family.replace(/"/g, '')}"` : o.font.family}, ${st.font.family}`;
