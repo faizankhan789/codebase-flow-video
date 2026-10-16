@@ -2,7 +2,9 @@
 
 `storyboard.json` turns `FLOW.md` into a story a non-technical viewer (client CEO, LinkedIn audience) can follow with the sound off. The renderer handles all animation, layout, camera and timing; you only describe **what** exists and **in which order to tell it**.
 
-Full working example: `examples/storyboard.example.json` in this skill.
+**Show the product working, not a flowchart.** Most scenes should be animated visuals that match what the code does (agents talking, a chat answering, a request being checked, a record moving through a pipeline, a real screenshot). See `references/visuals-guide.md` for the scene types and which one fits which code. Use the box-and-arrow map (`nodes`, `edges`, `reveal`, `flow`) for an overview scene or two, or leave it out entirely.
+
+Full working examples in this skill: `examples/helpdesk-agents/storyboard.json` (animated scenes) and `examples/invoice-flow/storyboard.json` (map with branches).
 
 **Every box, decision and caption points back to `FLOW.md` through `ref`.** The renderer reads `FLOW.md` next to the storyboard and refuses to render when a ref does not exist or when a branch from `FLOW.md`'s branch index is neither shown nor listed in `omitted`. This keeps the video tied to the code instead of to what sounds good.
 
@@ -12,8 +14,8 @@ Full working example: `examples/storyboard.example.json` in this skill.
 {
   "title": "InvoiceFlow",                       // product or project name, shown on title card + header
   "subtitle": "How a supplier invoice becomes a scheduled payment",  // one line, the promise
-  "theme": "dark",                              // "dark" (default, best on LinkedIn) or "light"
-  "accent": "#7C5CFF",                          // optional brand hex colour
+  "style": { "preset": "neural", "accent": "#0EA5E9", "font": { "family": "Inter", "file": "../public/fonts/Inter-Regular.woff2" } },
+                                                // look: preset + brand overrides (see "Style" below)
 
   "nodes": [                                    // every box on the map
     { "id": "reader", "label": "AI reads the invoice", "sub": "Amounts, dates, line items",
@@ -23,6 +25,10 @@ Full working example: `examples/storyboard.example.json` in this skill.
     { "from": "confident", "to": "review", "label": "not sure", "ref": "B1" }
   ],
   "scenes": [                                   // the story, in order; one caption each
+    { "title": "Three agents share the work",   // an animated scene: see visuals-guide.md
+      "caption": "One agent plans, one looks things up, one writes the reply.",
+      "visual": { "type": "agents", "agents": [...], "tools": [...], "steps": [...] },
+      "ref": ["P2.1", "P2.2", "P2.3"] },
     { "title": "A safety check",                // optional kicker; default "Step N of M"
       "caption": "If the AI is confident, the invoice moves on. If not, a person checks it first.",
       "reveal": ["confident", "review", "match"],   // nodes that appear in this scene
@@ -41,6 +47,19 @@ Full working example: `examples/storyboard.example.json` in this skill.
   }
 }
 ```
+
+### Style
+
+| Field | Notes |
+|---|---|
+| `preset` | `midnight` (default), `daylight`, `neural`, `ledger`, `storefront`, `clinic`, `terminal`, `boardroom`, `ocean`, `candy` (`render.mjs --list-styles`) |
+| `accent`, `accent2` | brand colours (hex). Low-contrast colours are nudged until readable; the renderer says so |
+| `good`, `bad`, `warn` | outcome colours (hex) |
+| `font` | `{ "family": "Inter" }` (used if installed) or `{ "family": "Inter", "file": "../path/font.woff2" }` (path relative to the storyboard; always used) |
+| `colors`, `kinds` | per-slot overrides (`bg`, `card`, `text`, …; `actor`, `decision`, …), rarely needed |
+| `radius`, `background`, `motion` | corner radius 0-40; `glow-dots`, `grid` or `plain`; `calm`, `standard` or `snappy` pacing |
+
+Start from `node <skill-dir>/renderer/detect-style.mjs .`: it reads the repo's brand (Tailwind, CSS variables, theme files, Android/Flutter/iOS colours, web manifest, fonts) and suggests a preset from the dependencies. Pass `--style <preset>` choices from the user over the suggestion. The legacy top-level `theme` and `accent` still work.
 
 ### Node fields
 
@@ -74,6 +93,7 @@ Full working example: `examples/storyboard.example.json` in this skill.
 - `reveal`: nodes that pop in during this scene. Reveal 1-4 per scene. Every node should be revealed somewhere (otherwise it only appears in the outro).
 - `flow`: ordered `[from, to]` pairs; each must match an edge, and both nodes must already be revealed (this scene or earlier). Packets travel in the listed order. For a decision, flow every outcome so the viewer sees both paths.
 - `focus`: nodes the camera frames. Default: this scene's `reveal` plus its `flow` endpoints. Keep it to about 2-5 neighbouring nodes; the preview warns when text would be too small. Nodes outside the focus dim.
+- `visual`: draws an animated scene instead of the map (see `visuals-guide.md`). A visual scene may still `reveal` nodes (they appear on the map later) but has no `flow` or `focus`.
 - `hold`: extra seconds when a scene needs to breathe.
 - `ref`: FLOW.md ids the caption is based on. Required in practice when a caption states a speed, scale, security or "always/never" fact (see writing rule 9).
 
@@ -104,7 +124,7 @@ The layout runs left-to-right in 16:9 and top-to-bottom in 1:1 and 9:16, ordered
 3. **Every scene answers "so what?"** Prefer "so nobody retypes data" over "the data is parsed".
 4. **Show the options.** Each decision from `FLOW.md`'s branch index that changes the business outcome gets its own scene, or shares one with its outcomes. Minor technical branches (cache hit/miss, internal retries) can be summarised as one "safety net" scene or left in `FLOW.md` only.
 5. **One idea per scene.** If a caption needs "and then", split it.
-6. **Structure:** hook (who starts it) → the main happy path → the branches and safety nets → the result. Then the outro sums up the value in one sentence.
+6. **Structure:** hook (who starts it, often a `chat` or `screen` of the real product) → the main happy path → the branches and safety nets (`decision`, `checklist`) → the result. Optionally one map scene as the overview. Then the outro sums up the value in one sentence (a map overview if there are nodes, otherwise a recap of the scene titles).
 7. **Several pipelines:** either tell them one after another in a single map (shared nodes are reused), or make one storyboard per pipeline (`storyboard-<name>.json`). Choose separate storyboards when the pipelines share almost nothing.
 8. **Length follows the code.** Do not pad or cut to hit a time. Rough guide: 1 scene per 1-3 meaningful steps. Each scene lasts about 5-9 s depending on caption length and animation. If the full video runs past ~3 minutes and the user wants a social cut, offer an extra `storyboard-highlights.json` with only the business-critical scenes, rendered with `--out flow-video/highlights`.
 

@@ -4,7 +4,9 @@
  * Everything on screen is a pure function of time `t`, so the renderer can step
  * frame by frame (window.__seek) and get identical output every run.
  *
- *   window.__setup(storyboard, { width, height, icons }) -> { duration, marks, warnings }
+ *   window.__setup(storyboard, { width, height, icons, style, images, fontUrl }) -> Promise<{ duration, marks, warnings }>
+ *
+ * Scenes with a "visual" are drawn by scenes.js (agents, chat, request, ...); other scenes use the flow map.
  *   window.__seek(t)
  */
 (() => {
@@ -24,7 +26,7 @@
       pill: '#FFFFFF', panel: 'rgba(246,247,251,0.86)',
     },
   };
-  const KIND_COLORS = {
+  let KIND_COLORS = {
     actor: '#4EA8FF', step: null, decision: '#FFB547', store: '#22C7A9',
     external: '#A0A8C3', ai: '#FF5CA8', output: '#34D399',
   };
@@ -37,15 +39,17 @@
   const NODE_W = 360, PAD_X = 22, PAD_Y = 20, BADGE = 56, BADGE_GAP = 16;
   const LABEL_SIZE = 26, LABEL_LH = 32, SUB_SIZE = 18, SUB_LH = 24;
   const GAP_RANK = { LR: 150, TB: 120 }, GAP_NODE = { LR: 56, TB: 48 };
-  const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  let FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
   // Timing (seconds).
-  const T = {
+  const T0 = {
     intro: 4.2, cam: 1.1, nodeStart: 0.55, nodeGap: 0.22, nodeDur: 0.6,
     edgeLead: 0.2, edgeDur: 0.7, packetGap: 0.75, packetDur: 1.4,
     capIn: 0.45, capFade: 0.4, tail: 1.0, minRead: 2.6, wordsPerSec: 3.2,
     activeFade: 0.5, outroCam: 1.6, outroHold: 5.0, endCard: 3.8,
   };
+  let T = { ...T0 };
+  const MOTION = { calm: 1.15, standard: 1, snappy: 0.85 };
   const DIM = 0.32;
   // Node labels smaller than this many screen pixels (at 1080p) are hard to read on a phone.
   const MIN_LABEL_PX = 19;
@@ -75,7 +79,8 @@
   }
 
   // ---------- state ----------
-  let W, H, ICONS, theme, accent, orient, base;
+  let W, H, ICONS, theme, accent, orient, base, style, RADIUS = 18, IMAGES = {};
+  let visuals = [], hasMap = true, recap = null;
   let nodes, nodeById, edges, scenes, packets, warnings;
   let outro, duration, view;
   let dom;
@@ -292,6 +297,7 @@
     stage.innerHTML = '';
     stage.style.width = W + 'px';
     stage.style.height = H + 'px';
+    stage.style.fontFamily = FONT;
     document.body.style.background = theme.bg;
 
     const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, stage);
@@ -300,12 +306,18 @@
     el('stop', { offset: '0%', 'stop-color': theme.glow }, rg);
     el('stop', { offset: '100%', 'stop-color': theme.bg }, rg);
     const pat = el('pattern', { id: 'dots', width: 44, height: 44, patternUnits: 'userSpaceOnUse' }, defs);
-    el('circle', { cx: 2, cy: 2, r: 1.8, fill: theme.dot }, pat);
+    if (style.background === 'grid') el('path', { d: 'M44 0 L0 0 0 44', fill: 'none', stroke: theme.dot, 'stroke-width': 1.5 }, pat);
+    else if (style.background !== 'plain') el('circle', { cx: 2, cy: 2, r: 1.8, fill: theme.dot }, pat);
     const pg = el('radialGradient', { id: 'packetGlow' }, defs);
     el('stop', { offset: '0%', 'stop-color': '#fff', 'stop-opacity': 0.9 }, pg);
     el('stop', { offset: '100%', 'stop-color': '#fff', 'stop-opacity': 0 }, pg);
 
     el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#bgGlow)' }, svg);
+    if (style.background === 'grid') {
+      const gp = el('pattern', { id: 'screenGrid', width: base / 18, height: base / 18, patternUnits: 'userSpaceOnUse' }, defs);
+      el('path', { d: `M${base / 18} 0 L0 0 0 ${base / 18}`, fill: 'none', stroke: theme.dot, 'stroke-width': 1 }, gp);
+    }
+    const bgPattern = el('rect', { x: 0, y: 0, width: W, height: H, fill: style.background === 'grid' ? 'url(#screenGrid)' : 'none' }, svg);
     const world = el('g', {}, svg);
     el('rect', { x: -20000, y: -20000, width: 40000, height: 40000, fill: 'url(#dots)' }, world);
     const gEdges = el('g', {}, world);
@@ -346,13 +358,13 @@
     nodes.forEach((n) => {
       const g = el('g', {}, gNodes);
       const inner = el('g', { transform: `translate(${-NODE_W / 2},${-n.h / 2})` }, g);
-      el('rect', { x: 0, y: 10, width: NODE_W, height: n.h, rx: 18, fill: theme.shadow }, inner);
+      el('rect', { x: 0, y: 10, width: NODE_W, height: n.h, rx: RADIUS, fill: theme.shadow }, inner);
       n.ring = el('rect', {
-        x: -6, y: -6, width: NODE_W + 12, height: n.h + 12, rx: 23,
+        x: -6, y: -6, width: NODE_W + 12, height: n.h + 12, rx: RADIUS + 5,
         fill: 'none', stroke: n.color, 'stroke-width': 3,
       }, inner);
       el('rect', {
-        x: 0, y: 0, width: NODE_W, height: n.h, rx: 18, fill: theme.card,
+        x: 0, y: 0, width: NODE_W, height: n.h, rx: RADIUS, fill: theme.card,
         stroke: n.kind === 'decision' ? n.color : theme.border, 'stroke-width': 2,
         'stroke-dasharray': n.kind === 'external' ? '8 6' : 'none',
       }, inner);
@@ -393,6 +405,10 @@
       });
       n.g = g;
     });
+
+    // Visual scenes (screen space) and the recap list used as outro when there is no map.
+    const gVisual = el('g', {}, svg);
+    const gRecap = el('g', {}, svg);
 
     // Overlays.
     const fs = (k) => `${Math.round(base * k)}px`;
@@ -439,7 +455,7 @@
     endCard.querySelector('p').textContent = (sb.outro && sb.outro.cta) || sb.subtitle || '';
     styleCard(endCard, fs);
 
-    dom = { svg, world, gPackets, header, capBox, panel, kicker, caption, progress, introCard, endCard, lastCaption: null };
+    dom = { svg, world, gVisual, gRecap, bgPattern, gPackets, header, capBox, panel, kicker, caption, progress, introCard, endCard, lastCaption: null };
   }
   function styleCard(card, fs) {
     card.querySelector('h1').style.cssText = `font-size:${fs(W < H ? 0.095 : 0.078)};color:${theme.text}`;
@@ -470,6 +486,18 @@
 
     scenes.forEach((sc, i) => {
       const S = t;
+      if (sc.visual) {
+        // Animated scene: no camera move; any nodes it reveals appear on the map silently for the outro.
+        (sc.reveal || []).forEach((id) => { if (!revealed.has(id)) { nodeById.get(id).revealAt = S; revealed.add(id); } });
+        const v = buildVisual(sc, i);
+        const read = Math.max(T.minRead, wordCount(sc.caption) / T.wordsPerSec);
+        const dur = Math.max(v.dur + 0.5 + T.tail * 0.5, T.capIn + read + T.capFade + 0.3) + (sc.hold || 0);
+        const cam = prevCam || (hasMap ? fit([...revealed].length ? [...revealed] : nodes.map((n) => n.id), maxScale) : { x: 0, y: 0, s: 1 });
+        Object.assign(sc, { start: S, dur, cam, fromCam: cam, focusSet: new Set(), index: i, vis: v });
+        prevCam = cam;
+        t += dur;
+        return;
+      }
       const fresh = (sc.reveal || []).filter((id) => !revealed.has(id));
       fresh.forEach((id, k) => {
         nodeById.get(id).revealAt = S + T.nodeStart + k * T.nodeGap;
@@ -507,8 +535,17 @@
       t += dur;
     });
 
-    // Outro: pull back to the whole map and run data through every edge.
+    // Outro: pull back to the whole map and run data through every edge (or, with no map, a recap).
     const all = nodes.map((n) => n.id);
+    if (!hasMap) {
+      const oCap = (sb.outro && sb.outro.caption) || '';
+      const holdR = Math.max(T.outroHold, T.capIn + wordCount(oCap) / T.wordsPerSec + T.capFade + 0.6, 1.2 + scenes.length * 0.25);
+      outro = { start: t, cam: { x: 0, y: 0, s: 1 }, fromCam: { x: 0, y: 0, s: 1 }, caption: oCap,
+        kicker: (sb.outro && sb.outro.kicker) || 'The full picture', endStart: t + 0.6 + holdR };
+      buildRecap();
+      duration = outro.endStart + T.endCard;
+      return;
+    }
     nodes.forEach((n) => { if (n.revealAt === undefined) n.revealAt = t + 0.3; });
     edges.forEach((e) => { if (e.drawAt === undefined) e.drawAt = t + 0.6; });
     const oCaption = (sb.outro && sb.outro.caption) || '';
@@ -528,15 +565,97 @@
     duration = outro.endStart + T.endCard;
   }
 
+  // ---------- visual scenes ----------
+  function buildVisual(sc, i) {
+    const lib = window.FlowScenes || {};
+    const kind = lib[sc.visual.type];
+    const g = el('g', { display: 'none' }, dom.gVisual);
+    const inner = el('g', {}, g);
+    if (!kind) { warnings.push(`scene ${i + 1}: unknown visual type "${sc.visual.type}"`); return { g, dur: 1, draw() {} }; }
+    const headerH = H * 0.08;
+    const boxv = { x: W * 0.05, y: headerH + base * 0.01, w: W * 0.9, h: view.capTop - headerH - base * 0.03 };
+    // Phones: lay the scene out in a narrower virtual box, then scale it up, so text reads larger.
+    const k = W < H ? 1.5 : W === H ? 1.15 : 1;
+    const vbox = { x: boxv.x + (boxv.w - boxv.w / k) / 2, y: boxv.y + (boxv.h - boxv.h / k) / 2, w: boxv.w / k, h: boxv.h / k };
+    const ctx = { style, U: base / 1080, box: vbox, icons: ICONS, images: IMAGES, measureCtx, motion: MOTION[style.motion] || 1, uid: `v${i}` };
+    const v = kind.build(inner, sc.visual, ctx);
+    // Fit: measure what the scene draws over its run and scale it to fill the box (up to 1.6x),
+    // so the same scene reads well in 16:9, 1:1 and 9:16.
+    g.setAttribute('display', 'inline');
+    let bb = null;
+    if (v.bounds) bb = v.bounds();
+    else {
+      for (const f of [0.35, 0.6, 0.8, 1]) {
+        v.draw(v.dur * f);
+        const b = inner.getBBox();
+        if (!b.width || !b.height) continue;
+        bb = bb ? { x: Math.min(bb.x, b.x), y: Math.min(bb.y, b.y), x2: Math.max(bb.x2, b.x + b.width), y2: Math.max(bb.y2, b.y + b.height) } : { x: b.x, y: b.y, x2: b.x + b.width, y2: b.y + b.height };
+      }
+      if (bb) bb = { x: bb.x, y: bb.y, w: bb.x2 - bb.x, h: bb.y2 - bb.y };
+    }
+    g.setAttribute('display', 'none');
+    if (bb && bb.w > 0 && bb.h > 0) {
+      const s = Math.min(boxv.w / bb.w, boxv.h / bb.h, 1.6 * k);
+      const cx = boxv.x + boxv.w / 2, cy = boxv.y + boxv.h / 2;
+      inner.setAttribute('transform', `translate(${cx},${cy}) scale(${s}) translate(${-(bb.x + bb.w / 2)},${-(bb.y + bb.h / 2)})`);
+    }
+    return { g, dur: v.dur, draw: v.draw };
+  }
+
+  function buildRecap() {
+    // One row per scene title, appearing in sequence: a summary of the story told.
+    const items = scenes.map((s, i) => s.title || s.caption.split(/[.!?]/)[0]).slice(0, 9);
+    const avail = view.capTop - H * 0.1;
+    const U = Math.min(base / 1080 * 1.5, avail / (items.length * 64));
+    const rowH = 64 * U, w = Math.min(W * 0.84, 900 * U);
+    const total = items.length * rowH;
+    const top = H * 0.08 + Math.max(10 * U, (view.capTop - H * 0.08 - total) / 2);
+    recap = items.map((txt, i) => {
+      const g = el('g', { display: 'none' }, dom.gRecap);
+      const x = W / 2 - w / 2, y = top + i * rowH;
+      el('rect', { x, y: y + 6 * U, width: w, height: rowH - 12 * U, rx: Math.min(RADIUS, 24) * U, fill: theme.card, stroke: theme.border, 'stroke-width': 2 * U }, g);
+      el('circle', { cx: x + 34 * U, cy: y + rowH / 2, r: 15 * U, fill: accent, 'fill-opacity': 0.2 }, g);
+      const num = el('text', { x: x + 34 * U, y: y + rowH / 2 + 6 * U, 'text-anchor': 'middle', fill: accent, 'font-family': FONT, 'font-size': 17 * U, 'font-weight': 800 }, g);
+      num.textContent = String(i + 1);
+      const tx = el('text', { x: x + 64 * U, y: y + rowH / 2 + 8 * U, fill: theme.text, 'font-family': FONT, 'font-size': 23 * U, 'font-weight': 650 }, g);
+      tx.textContent = txt.length > 60 ? txt.slice(0, 59) + '…' : txt;
+      return { g, at: outro.start + 0.3 + i * 0.22 };
+    });
+  }
+
   // ---------- public API ----------
-  window.__setup = (sb, opts) => {
+  async function loadAssets(opts) {
+    if (opts.fontUrl) {
+      const ff = new FontFace(style.font.name || 'BrandFont', `url(${opts.fontUrl})`);
+      try { document.fonts.add(await ff.load()); } catch (e) { warnings.push(`font could not be loaded: ${e.message}`); }
+    }
+    await document.fonts.ready;
+    IMAGES = {};
+    await Promise.all(Object.entries(opts.images || {}).map(([src, url]) => new Promise((res) => {
+      const im = new Image();
+      im.onload = () => { IMAGES[src] = { url, w: im.naturalWidth, h: im.naturalHeight }; res(); };
+      im.onerror = () => { warnings.push(`image could not be loaded: ${src}`); res(); };
+      im.src = url;
+    })));
+  }
+
+  window.__setup = async (sb, opts) => {
     W = opts.width; H = opts.height; ICONS = opts.icons;
     base = Math.min(W, H);
-    theme = THEMES[sb.theme] || THEMES.dark;
-    accent = sb.accent || '#7C5CFF';
-    orient = W > H ? 'LR' : 'TB';
     warnings = [];
+    style = opts.style || { colors: THEMES[sb.theme] || THEMES.dark, accent: sb.accent || '#7C5CFF', kinds: KIND_COLORS, font: { family: FONT }, radius: 18, background: 'glow-dots', motion: 'standard' };
+    theme = style.colors;
+    accent = style.accent;
+    KIND_COLORS = { step: null, ...style.kinds };
+    FONT = style.font.family;
+    RADIUS = style.radius ?? 18;
+    const m = MOTION[style.motion] || 1;
+    T = Object.fromEntries(Object.entries(T0).map(([k, v]) => [k, ['wordsPerSec', 'minRead'].includes(k) ? v : v * m]));
+    orient = W > H ? 'LR' : 'TB';
     packets = [];
+    visuals = [];
+    recap = null;
+    await loadAssets(opts);
 
     const capFrac = W < H ? 0.26 : 0.27;
     const headerH = H * 0.08;
@@ -544,7 +663,8 @@
 
     measureCtx = document.createElement('canvas').getContext('2d');
     const textW = NODE_W - PAD_X * 2 - BADGE - BADGE_GAP;
-    nodes = sb.nodes.map((src) => {
+    hasMap = (sb.nodes || []).length > 0;
+    nodes = (sb.nodes || []).map((src) => {
       const kind = src.kind || 'step';
       const n = {
         id: src.id, label: src.label, sub: src.sub || '', kind,
@@ -562,7 +682,7 @@
     edges = (sb.edges || []).filter((e) => e.from !== e.to).map((e) => ({ from: e.from, to: e.to, label: e.label || '' }));
     scenes = sb.scenes.map((s) => ({ ...s }));
 
-    layout();
+    if (hasMap) layout();
     buildDom(sb);
     schedule(sb);
     buildPackets();
@@ -578,10 +698,34 @@
     for (const s of scenes) if (t >= s.start && t < s.start + s.dur) sc = s;
     const inOutro = t >= outro.start;
 
+    // Visual scenes cover the map; the map fades out under them.
+    let visOp = 0;
+    scenes.forEach((s) => {
+      if (!s.vis) return;
+      const local = t - s.start;
+      const op = t >= s.start - 0.01 && t < s.start + s.dur ? Math.min(prog(local, 0, 0.45), 1 - prog(local, s.dur - 0.45, 0.45)) : 0;
+      s.vis.g.setAttribute('display', op > 0 ? 'inline' : 'none');
+      if (op > 0) { s.vis.g.setAttribute('opacity', op.toFixed(3)); s.vis.draw(Math.max(0, local - 0.15)); }
+      visOp = Math.max(visOp, op);
+    });
+    // The map is hidden for a visual scene (full strength once the fade-in is done) and before the first map scene.
+    const mapScene = sc && !sc.vis;
+    let mapOp = hasMap ? 1 : 0;
+    if (hasMap && !inOutro) {
+      if (sc && sc.vis) mapOp = 1 - visOp;
+      if (!mapScene && sc && sc.vis) mapOp = Math.min(mapOp, 1 - visOp);
+      const firstMap = scenes.find((s) => !s.vis);
+      if (!firstMap || t < firstMap.start) mapOp = sc && sc.vis ? 0 : mapOp;
+    }
+    dom.world.setAttribute('opacity', mapOp.toFixed(3));
+    if (recap) recap.forEach((r) => { const a = prog(t, r.at, 0.45); r.g.setAttribute('display', a > 0 && t < outro.endStart + 0.6 ? 'inline' : 'none'); r.g.setAttribute('opacity', a.toFixed(3)); r.g.setAttribute('transform', `translate(0,${(1 - ease.outCubic(a)) * base * 0.02})`); });
+
     // Camera.
     let cam;
-    if (t < T.intro) cam = scenes[0].cam;
+    if (!hasMap) cam = { x: 0, y: 0, s: 1 };
+    else if (t < T.intro) cam = (scenes.find((s) => !s.vis) || scenes[0]).cam;
     else if (inOutro) cam = camLerp(outro.fromCam, outro.cam, ease.inOutCubic(prog(t, outro.start, T.outroCam)));
+    else if (!sc) cam = (scenes.find((s) => !s.vis) || scenes[0]).cam;
     else cam = camLerp(sc.fromCam, sc.cam, ease.inOutCubic(prog(t, sc.start, T.cam)));
     const tx = W / 2 - cam.x * cam.s, ty = view.cy - cam.y * cam.s;
     dom.world.setAttribute('transform', `translate(${tx},${ty}) scale(${cam.s})`);

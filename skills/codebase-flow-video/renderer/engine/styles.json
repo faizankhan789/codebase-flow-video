@@ -1,0 +1,102 @@
+{
+  "midnight": {
+    "about": "Default. Deep blue-violet, soft glow. Works for anything; best on LinkedIn.",
+    "theme": "dark",
+    "colors": { "bg": "#0A0F1E", "glow": "#18214A", "dot": "#1C2546", "card": "#121A30", "border": "#26325A", "text": "#EEF2FD", "muted": "#8E98BA", "edge": "#34406A", "shadow": "rgba(0,0,0,0.45)", "pill": "#18213D", "panel": "rgba(10,15,30,0.78)" },
+    "accent": "#7C5CFF", "accent2": "#22D3EE", "good": "#34D399", "bad": "#F87171", "warn": "#FBBF24",
+    "kinds": { "actor": "#4EA8FF", "decision": "#FFB547", "store": "#22C7A9", "external": "#A0A8C3", "ai": "#FF5CA8", "output": "#34D399" },
+    "font": { "family": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif" },
+    "mono": "\"SF Mono\", \"JetBrains Mono\", Menlo, Consolas, monospace",
+    "radius": 18, "background": "glow-dots", "motion": "standard"
+  },
+  "daylight": {
+    "about": "Clean light version of midnight for documents and slides.",
+    "theme": "light",
+    "colors": { "bg": "#F6F7FB", "glow": "#E4E8F7", "dot": "#D8DDEB", "card": "#FFFFFF", "border": "#DDE2EF", "text": "#111827", "muted": "#5A6380", "edge": "#B9C1D6", "shadow": "rgba(20,30,60,0.10)", "pill": "#FFFFFF", "panel": "rgba(246,247,251,0.86)" },
+    "accent": "#6D4AFF", "accent2": "#0891B2", "good": "#16A34A", "bad": "#DC2626", "warn": "#D97706",
+    "kinds": { "actor": "#2563EB", "decision": "#D97706", "store": "#0D9488", "external": "#8A93A8", "ai": "#DB2777", "output": "#16A34A" },
+    "font": { "family": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif" },
+    "mono": "\"SF Mono\", \"JetBrains Mono\", Menlo, Consolas, monospace",
+    "radius": 18, "background": "glow-dots", "motion": "standard"
+  },
+  "ledger": {
+    "about": "Fintech, payments, banking, insurance. Navy and emerald, sharp corners, calm pace.",
+    "theme": "dark",
+    "colors": { "bg": "#061223", "glow": "#0D2846", "dot": "#102A47", "card": "#0B1C33", "border": "#1B3556", "text": "#F1F5FB", "muted": "#8FA3BF", "edge": "#2A4566", "shadow": "rgba(0,0,0,0.5)", "pill": "#0E223D", "panel": "rgba(6,18,35,0.82)" },
+    "accent": "#10B981", "accent2": "#38BDF8", "good": "#34D399", "bad": "#F87171", "warn": "#F5B544",
+    "kinds": { "actor": "#60A5FA", "decision": "#F5B544", "store": "#2DD4BF", "external": "#94A3B8", "ai": "#A78BFA", "output": "#34D399" },
+    "font": { "family": "Inter, \"SF Pro Display\", system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif" },
+    "mono": "\"SF Mono\", \"JetBrains Mono\", Menlo, Consolas, monospace",
+    "radius": 10, "background": "plain", "motion": "calm"
+  },
+  "clinic": {
+    "about": "Healthcare, wellness, education. Light teal, rounded, calm and reassuring.",
+    "theme": "light",
+    "colors": { "bg": "#F3FAF9", "glow": "#DFF2EE", "dot": "#D3E9E4", "card": "#FFFFFF", "border": "#D3E6E2", "text": "#0F2A2A", "muted": "#557370", "edge": "#A9C9C3", "shadow": "rgba(15,60,55,0.10)", "pill": "#FFFFFF", "panel": "rgba(243,250,249,0.88)" },
+    "accent": "#0D9488", "accent2": "#3B82F6", "good": "#16A34A", "bad": "#DC2626", "warn": "#D97706",
+    "kinds": { "actor": "#3B82F6", "decision": "#D97706", "store": "#0D9488", "external": "#8A9AA8", "ai": "#8B5CF6", "output": "#16A34A" },
+    "font": { "family": "\"Nunito Sans\", Inter, system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif" },
+    "mono": "\"SF Mono\", \"JetBrains Mono\", Menlo, Consolas, monospace",
+    "radius": 24, "background": "plain", "motion": "calm"
+  },
+  "neural": {
+    "about": "AI, agents, LLM apps, ML. Near-black with fuchsia and cyan, glowing.",
+    "theme": "dark",
+    "colors": { "bg": "#07060D", "glow": "#1C1238", "dot": "#1A1530", "card": "#110E1F", "border": "#2A2342", "text": "#F3F0FF", "muted": "#9C93B8", "edge": "#3A3158", "shadow": "rgba(0,0,0,0.55)", "pill": "#16122A", "panel": "rgba(7,6,13,0.8)" },
+    "accent": "#D946EF", "accent2": "#22D3EE", "good": "#4ADE80", "bad": "#FB7185", "warn": "#FBBF24",
+    "kinds": { "actor": "#60A5FA", "decision": "#FBBF24", "store": "#2DD4BF", "external": "#A1A1B5", "ai": "#F472B6", "output": "#4ADE80" },
+    "font": { "family": "\"Space Grotesk\", Inter, system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif" },
+    "mono": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+    "radius": 16, "background": "glow-dots", "motion": "standard"
+  },
+  "storefront": {
+    "about": "E-commerce, marketplaces, consumer apps. Warm light, orange accent, lively pace.",
+    "theme": "light",
+    "colors": { "bg": "#FFF8F1", "glow": "#FFEAD3", "dot": "#F5E3D0", "card": "#FFFFFF", "border": "#F1DFCC", "text": "#2A1A0E", "muted": "#7A6250", "edge": "#E2C9B0", "shadow": "rgba(90,50,10,0.10)", "pill": "#FFFFFF", "panel": "rgba(255,248,241,0.88)" },
+    "accent": "#EA580C", "accent2": "#2563EB", "good": "#16A34A", "bad": "#DC2626", "warn": "#D97706",
+    "kinds": { "actor": "#2563EB", "decision": "#D97706", "store": "#0F766E", "external": "#9CA3AF", "ai": "#DB2777", "output": "#16A34A" },
+    "font": { "family": "\"DM Sans\", Inter, system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif" },
+    "mono": "\"SF Mono\", \"JetBrains Mono\", Menlo, Consolas, monospace",
+    "radius": 20, "background": "plain", "motion": "snappy"
+  },
+  "terminal": {
+    "about": "Developer tools, CLIs, infrastructure, APIs for engineers. Dark green-black, mono, grid.",
+    "theme": "dark",
+    "colors": { "bg": "#0A0E0B", "glow": "#0F1F15", "dot": "#16241B", "card": "#0E1511", "border": "#1F2E24", "text": "#E6F2EA", "muted": "#8AA394", "edge": "#2A3C30", "shadow": "rgba(0,0,0,0.55)", "pill": "#101A14", "panel": "rgba(10,14,11,0.84)" },
+    "accent": "#4ADE80", "accent2": "#22D3EE", "good": "#4ADE80", "bad": "#F87171", "warn": "#FACC15",
+    "kinds": { "actor": "#60A5FA", "decision": "#FACC15", "store": "#2DD4BF", "external": "#94A3B8", "ai": "#C084FC", "output": "#4ADE80" },
+    "font": { "family": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace" },
+    "mono": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+    "radius": 8, "background": "grid", "motion": "snappy"
+  },
+  "boardroom": {
+    "about": "Enterprise, B2B SaaS, internal tools, executive briefings. Light slate and blue.",
+    "theme": "light",
+    "colors": { "bg": "#F6F7F9", "glow": "#E8ECF3", "dot": "#DDE2EA", "card": "#FFFFFF", "border": "#DCE1EA", "text": "#111827", "muted": "#5B6474", "edge": "#BAC3D1", "shadow": "rgba(17,24,39,0.08)", "pill": "#FFFFFF", "panel": "rgba(246,247,249,0.9)" },
+    "accent": "#2563EB", "accent2": "#7C3AED", "good": "#16A34A", "bad": "#DC2626", "warn": "#D97706",
+    "kinds": { "actor": "#2563EB", "decision": "#D97706", "store": "#0F766E", "external": "#8A93A3", "ai": "#7C3AED", "output": "#16A34A" },
+    "font": { "family": "Inter, \"SF Pro Display\", system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif" },
+    "mono": "\"SF Mono\", \"JetBrains Mono\", Menlo, Consolas, monospace",
+    "radius": 12, "background": "plain", "motion": "calm"
+  },
+  "ocean": {
+    "about": "Data pipelines, analytics, IoT, streaming. Deep teal with cyan and lime.",
+    "theme": "dark",
+    "colors": { "bg": "#03161F", "glow": "#0A3346", "dot": "#0C2A38", "card": "#072230", "border": "#134456", "text": "#E6F6FB", "muted": "#86AAB8", "edge": "#1E5468", "shadow": "rgba(0,0,0,0.5)", "pill": "#0A2B3A", "panel": "rgba(3,22,31,0.82)" },
+    "accent": "#22D3EE", "accent2": "#A3E635", "good": "#A3E635", "bad": "#FB7185", "warn": "#FBBF24",
+    "kinds": { "actor": "#60A5FA", "decision": "#FBBF24", "store": "#2DD4BF", "external": "#94A3B8", "ai": "#F472B6", "output": "#A3E635" },
+    "font": { "family": "Inter, system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif" },
+    "mono": "\"JetBrains Mono\", \"SF Mono\", Menlo, Consolas, monospace",
+    "radius": 14, "background": "grid", "motion": "standard"
+  },
+  "candy": {
+    "about": "Playful consumer apps, games, social, education for kids. Bright and round.",
+    "theme": "light",
+    "colors": { "bg": "#FFF6FB", "glow": "#FFE3F3", "dot": "#F8DDEE", "card": "#FFFFFF", "border": "#F3D7E8", "text": "#2B1638", "muted": "#7B6189", "edge": "#E5C3DA", "shadow": "rgba(80,20,70,0.10)", "pill": "#FFFFFF", "panel": "rgba(255,246,251,0.9)" },
+    "accent": "#8B5CF6", "accent2": "#EC4899", "good": "#22C55E", "bad": "#EF4444", "warn": "#F59E0B",
+    "kinds": { "actor": "#3B82F6", "decision": "#F59E0B", "store": "#14B8A6", "external": "#A3A3B8", "ai": "#EC4899", "output": "#22C55E" },
+    "font": { "family": "\"Nunito\", \"Nunito Sans\", system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif" },
+    "mono": "\"SF Mono\", \"JetBrains Mono\", Menlo, Consolas, monospace",
+    "radius": 28, "background": "glow-dots", "motion": "snappy"
+  }
+}

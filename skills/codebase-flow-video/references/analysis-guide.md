@@ -2,22 +2,42 @@
 
 Goal: a `FLOW.md` that explains every step of every pipeline in the repo, including every branch and alternative path, with each claim traceable to `file:line` **and the exact code at that line**. The video is built from this file, so the video can only be as accurate as `FLOW.md`. Two things make it accurate: evidence that a script can check (precision) and inventories that show nothing was missed (recall).
 
+**Work from the code graph, not from whole files.** `<skill-dir>/renderer/graph.mjs` parses the repo once with tree-sitter (JavaScript, TypeScript, Python, Go, Java, Ruby, PHP, C#, C++, Rust, Bash) and answers small questions with `file:line` answers. Reading a whole file costs hundreds of lines of tokens; a graph query costs a few. Rule: **query first, then read only the exact line ranges you will cite** (`show` / `slice`). Never read a whole file to find out what it calls.
+
+| Need | Command (define once per shell: `G() { node <skill-dir>/renderer/graph.mjs "$@"; }`, then run from the repo) |
+|---|---|
+| Build or refresh the graph (changed files only) | `G index .` (prints the summary) |
+| Overview: languages, folders, hubs, external packages | `G summary` |
+| Every entry point, with the function it starts | `G entry` |
+| What a function calls, as a tree | `G calls placeOrder --depth 2` (`E4` works too) |
+| Who calls a function | `G callers saveOrder` |
+| Chain from an entry point to an effect | `G path E4 saveOrder`, `G path E4 ext:stripe` |
+| Decisions inside a function (branch inventory) | `G branches placeOrder` |
+| Exact numbered lines to quote | `G show placeOrder`, `G slice src/orders.js:40-58` |
+| Outside services and where they are called | `G externals` |
+| Find a function by name | `G find 'refund|chargeback'` |
+| Files the parser cannot read (Kotlin, Swift, Dart, Vue…) | `G unparsed` → use the grep commands below for these only |
+
+Call edges marked `?` are **ambiguous** (several candidates; check with `show`), `⇢` are **external** packages, and `unresolved` calls (hidden by default, `--all` shows them) are dynamic dispatch, built-ins or callbacks. The graph proposes; your quotes and `verify-flow.mjs` prove.
+
+`graph.json` lives in `flow-video/` next to `FLOW.md`. Run the commands from inside the repo, or pass `--repo DIR`. A function rather than `G="node …"` is used because zsh does not split a command stored in a variable. If each command runs in a fresh shell, put the definition in front: `G() { node <skill-dir>/renderer/graph.mjs "$@"; }; G entry`.
+
 ## 1. Recon (cheap, read little)
 
 Record the revision first: `git rev-parse --short HEAD`. It goes at the top of `FLOW.md` as `Commit: \`<sha>\`` so the line numbers stay meaningful later.
 
-Read these, in order, and stop reading once the picture is clear:
+Then `G index .` — its summary replaces reading the tree, manifests and most of the README. Read only what the summary cannot tell you, in this order, and stop once the picture is clear:
 
-1. `README*`, `docs/` index, `ARCHITECTURE*`, `CLAUDE.md` / `AGENTS.md`
-2. Manifests: `package.json`, `pyproject.toml` / `requirements*.txt`, `go.mod`, `Cargo.toml`, `pom.xml` / `build.gradle`, `Gemfile`, `composer.json`
-3. Runtime wiring: `Dockerfile`, `docker-compose*`, `Procfile`, k8s / serverless / terraform files, CI workflows
-4. The directory tree (`git ls-files | head -300` or `find . -type f -not -path '*/node_modules/*' -not -path '*/.git/*'`)
+1. The first screen of `README*` (what the product is for, who uses it), `CLAUDE.md` / `AGENTS.md` / `ARCHITECTURE*` if present
+2. Runtime wiring the graph does not parse: `Dockerfile`, `docker-compose*`, k8s / serverless / terraform files, CI workflows (grep them, don't read them whole)
 
 READMEs and docs describe intent and go stale. Use them to find entry points, never as evidence for a step.
 
 ## 2. Inventory entry points (recall)
 
-Don't rely on spotting entry points while reading. Grep for them, then classify **every** hit as traced or out of scope (with a reason). Adapt the patterns to the stack; run only the ones that apply. The commands use POSIX regex only (no `\b`, `\s`), so they work with any git build; `--untracked` includes new files not yet committed:
+`G entry` lists routes (decorators, `router.post(...)`, `http.HandleFunc`, Spring/ASP.NET attributes, Next.js route files), pages, jobs (Celery, schedulers, queue consumers), CLIs, `main` guards, serverless handlers, and manifest entries (`package.json` scripts and bins, `Procfile`, `Dockerfile` CMD, `pyproject` scripts). Classify **every** listed entry as traced or out of scope (with a reason).
+
+The detector is pattern based. Also grep for anything it may not know, and for the files `G unparsed` lists. The commands use POSIX regex only (no `\b`, `\s`), so they work with any git build; `--untracked` includes new files not yet committed:
 
 ```bash
 # HTTP / RPC routes
@@ -38,7 +58,7 @@ A **pipeline** is one entry point followed through to its final effect (a respon
 
 ## 4. Trace each pipeline
 
-Follow the calls from the entry point forward. Give each step an id `P<pipeline>.<step>` (sub-steps `P1.3a`). At each meaningful step, record:
+Follow the calls from the entry point forward with `G calls <entry or function> --depth 2`, then `G path <entry> <sink>` for each effect (DB write, payment, message). Read code only with `G show` / `G slice`, and only for steps you will write down. Give each step an id `P<pipeline>.<step>` (sub-steps `P1.3a`). At each meaningful step, record:
 
 - **Evidence**: `` `path/to/file.ext:line` `exact code from that line` ``. Copy the code from the file; never retype it from memory. Use `:42-58` for a range. The quote must be the distinctive part of the line (8+ characters), e.g. `` `if (amount > LIMIT)` ``, not `` `if` ``. The `path:line` form in backticks is reserved for code references; write hostnames and ports without backticks. If the code itself contains backticks (template literals), wrap the quote in double backticks: ``` ``const url = `${base}/pay` `` ```.
 - **What it does**: one technical line, plus one plain-language line a CEO would understand.
@@ -69,18 +89,17 @@ A "meaningful step" changes the data, makes a decision, or crosses a boundary (p
 
 ## 5. Inventory branches, config and external systems (recall)
 
-For the files your traces touched, list every branch site and reconcile. List the files inline (a `$FILES` variable does not split into separate paths in zsh):
+For every function your traces touched, run `G branches <function>` (or `G branches path/to/file` for a whole file). Each listed site is either in the branch index or counts as a trivial guard (null check, logging, formatting). Config reads are not branches by themselves; find the ones that change the flow:
 
 ```bash
-# every file cited in your traces after the --
-git grep -n --untracked -w -E 'if|elif|else if|switch|case|match|when|unless|catch|except|rescue|guard' -- src/orders.js src/payments.js
+# list the traced files inline after the -- (a $FILES variable does not split into separate paths in zsh)
 git grep -n --untracked -E 'process\.env|os\.environ|getenv|os\.Getenv|ENV\[|settings\.|config\.|feature_?flag|isEnabled\(' -- src/orders.js src/payments.js
 ```
 
-Each branch hit is either in the branch index or counts as a trivial guard (null check, logging, formatting). Each config read that changes the flow becomes a branch with its default. Then check external systems across the repo, so the External systems table is complete:
+Each config read that changes the flow becomes a branch with its default. `G externals` lists every outside package with its call sites, so the External systems table is complete. For files the graph could not parse, use grep:
 
 ```bash
-git grep -n --untracked -E "^(import|from)[[:space:]].*(requests|httpx|axios|fetch|boto3|@aws-sdk|stripe|openai|anthropic|redis|pg|psycopg|mongoose|prisma|sqlalchemy|kafka|amqp|nodemailer|twilio|sendgrid)|require\(['\"](axios|stripe|redis|pg|aws-sdk)" -- ':!*test*'
+git grep -n --untracked -w -E 'if|elif|else if|switch|case|match|when|unless|catch|except|rescue|guard' -- app/src/main/Screen.kt
 ```
 
 Record the counts in the `## Coverage` section (template below). A big gap between "found" and "traced or classified" means something was missed.
@@ -88,9 +107,9 @@ Record the counts in the `## Coverage` section (template below). A big gap betwe
 ## 6. Scale with subagents
 
 - Under ~50 source files, or a single pipeline: trace inline.
-- Larger: dispatch one subagent per pipeline (or per top-level module), in parallel, in a single message. Give each one: the entry point, the record format from step 4 (including the evidence rule: exact quotes copied from the file), the id prefix to use (`P3.*`, branches `B30`-`B39`) so ids do not collide, and an instruction to return only the structured trace (no file dumps). Then merge, deduplicating shared steps (for example, two pipelines that write through the same repository class).
+- Larger: index once (`G index .`), then dispatch one subagent per pipeline (or per top-level module), in parallel, in a single message. Give each one: the entry id (`E4`), the graph command table above with the exact `G() { … }` line, the record format from step 4 (including the evidence rule: exact quotes copied from `show`/`slice` output), the id prefix to use (`P3.*`, branches `B30`-`B39`) so ids do not collide, and an instruction to return only the structured trace (no file dumps). Then merge, deduplicating shared steps (`G callers` shows which pipelines share a function).
 
-Each file should be read once overall. Prefer `grep` for call sites over reading whole files.
+Each line range should be read once overall. Graph queries replace reading files to discover structure; reads are for quoting.
 
 ## 7. Verify
 
@@ -137,7 +156,7 @@ What the system is for, who uses it, the main actors and external systems. 3-6 s
 ## Coverage
 | Inventory | Found | Traced | Out of scope (why) |
 |---|---|---|---|
-| Entry points | 7 | 3 | 4: health check, two one-off scripts, admin CLI |
+| Entry points (`graph entry` + grep) | 7 | 3 | 4: health check, two one-off scripts, admin CLI |
 | Branch sites in traced files | 41 | 9 in branch index | 32 trivial guards |
 | Config reads that change flow | 3 | 3 | defaults noted on B4, B7, B8 |
 | External clients | 5 | 5 | none |

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>codebase-flow-video</title>
+<meta name="description" content="A Claude Code plugin that reads your codebase with a code graph, checks every claim against the code, and turns it into an animated explainer video.">
+<meta property="og:title" content="codebase-flow-video">
+<meta property="og:description" content="Your codebase, explained in one video. Checked against the real code.">
+<meta property="og:image" content="assets/promo-poster.jpg">
+<style>
+  :root {
+    --bg: #07060D; --glow: #1C1238; --card: #110E1F; --border: #2A2342; --text: #F3F0FF; --muted: #A9A1C4;
+    --accent: #E06BF5; --accent2: #22D3EE; --good: #4ADE80;
+    --radius: 18px; --max: 1120px;
+    font-family: "Space Grotesk", Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: radial-gradient(ellipse 90% 60% at 50% 0%, var(--glow), var(--bg) 70%) var(--bg); color: var(--text); line-height: 1.55; }
+  a { color: var(--accent2); }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--card); color: var(--text); padding: 8px 14px; border-radius: 10px; }
+  .skip:focus { left: 16px; z-index: 10; }
+  header.nav { max-width: var(--max); margin: 0 auto; padding: 20px 20px 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .01em; color: var(--text); text-decoration: none; }
+  .brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 16px var(--accent); }
+  .nav a.gh { color: var(--muted); text-decoration: none; font-weight: 600; border: 1px solid var(--border); padding: 8px 14px; border-radius: 999px; }
+  .nav a.gh:hover, .nav a.gh:focus-visible { color: var(--text); border-color: var(--accent); }
+  main { max-width: var(--max); margin: 0 auto; padding: 0 20px 80px; }
+  .hero { text-align: center; padding: 56px 0 28px; }
+  .hero h1 { font-size: clamp(36px, 7vw, 76px); line-height: 1.02; letter-spacing: -.035em; margin: 0 0 18px; }
+  .hero h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lede { font-size: clamp(17px, 2.2vw, 21px); color: var(--muted); max-width: 720px; margin: 0 auto 30px; }
+  .video { position: relative; border-radius: calc(var(--radius) + 4px); overflow: hidden; border: 1px solid var(--border); box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(224,107,245,.08); background: #000; }
+  .video video { display: block; width: 100%; height: auto; }
+  .install { margin: 28px auto 0; max-width: 760px; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .install .label { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  .cmd { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .cmd pre { margin: 0; overflow-x: auto; font: 15px/1.7 "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; color: var(--text); }
+  .cmd button { flex: none; font: 600 14px inherit; font-family: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+  .cmd button:focus-visible { outline: 3px solid var(--accent2); outline-offset: 2px; }
+  .install small { display: block; color: var(--muted); margin-top: 10px; }
+  section { padding: 64px 0 0; }
+  h2 { font-size: clamp(26px, 4vw, 40px); letter-spacing: -.02em; margin: 0 0 10px; line-height: 1.1; }
+  .sub { color: var(--muted); margin: 0 0 28px; max-width: 760px; font-size: 18px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+  figure { margin: 0; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  figure img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+  figcaption { padding: 14px 16px 16px; }
+  figcaption b { display: block; font-size: 17px; }
+  figcaption span { color: var(--muted); font-size: 15px; }
+  .steps { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); counter-reset: s; }
+  .step { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .step::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(224,107,245,.16); color: var(--accent); font-weight: 800; margin-bottom: 12px; }
+  .step b { display: block; font-size: 18px; margin-bottom: 4px; }
+  .step span { color: var(--muted); }
+  .step code, li code { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-size: .92em; color: var(--accent2); }
+  .styles { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); font-weight: 600; }
+  .chip i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.18); }
+  .chip small { color: var(--muted); font-weight: 500; }
+  .two { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
+  ul.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ul.checks li { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px 14px 48px; position: relative; }
+  ul.checks li::before { content: "✓"; position: absolute; left: 16px; top: 13px; color: var(--good); font-weight: 900; }
+  footer { max-width: var(--max); margin: 0 auto; padding: 32px 20px 48px; color: var(--muted); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <a class="brand" href="#"><i aria-hidden="true"></i>codebase-flow-video</a>
+  <a class="gh" href="https://github.com/faizankhan789/codebase-flow-video">GitHub ↗</a>
+</header>
+<main id="main">
+  <section class="hero" aria-labelledby="t">
+    <h1 id="t">Your codebase,<br><em>explained in one video.</em></h1>
+    <p class="lede">A free Claude Code plugin that reads your code with a code graph, checks every claim against it, and animates how it really works: agents at work, chats answering, requests being checked, data changing. In your brand, with music, ready for LinkedIn.</p>
+    <div class="video">
+      <video id="hero" src="assets/promo-16x9.mp4" poster="assets/promo-poster.jpg" muted loop playsinline preload="metadata" aria-label="Demo video: codebase-flow-video explaining itself, rendered by the plugin"></video>
+    </div>
+    <div class="install">
+      <div class="label">Install in Claude Code</div>
+      <div class="cmd"><pre id="cmd">/plugin marketplace add faizankhan789/codebase-flow-video
+/plugin install codebase-flow-video@codebase-flow-video</pre><button type="button" id="copy">Copy</button></div>
+      <small>Then, in any project: “Make a video of how this codebase works.” Needs Node 18+ and ffmpeg.</small>
+    </div>
+  </section>
+
+  <section aria-labelledby="scenes">
+    <h2 id="scenes">Not a flowchart</h2>
+    <p class="sub">Each scene is picked from what your code actually does. Every element comes from a verified map of the code.</p>
+    <div class="grid">
+      <figure><img src="assets/scenes/agents.jpg" alt="Three agents passing messages and calling tools, with an activity log" loading="lazy"><figcaption><b>Agents</b><span>Planners, researchers, tool calls and handoffs, step by step.</span></figcaption></figure>
+      <figure><img src="assets/scenes/chat.jpg" alt="A chat window where the assistant answers with source chips" loading="lazy"><figcaption><b>Chat</b><span>Typing, streamed answers and the sources behind them.</span></figcaption></figure>
+      <figure><img src="assets/scenes/request.jpg" alt="A request travelling to a service that ticks off checks, saves and confirms" loading="lazy"><figcaption><b>Request</b><span>An API call checked, saved and answered.</span></figcaption></figure>
+      <figure><img src="assets/scenes/pipeline.jpg" alt="A record card gaining and changing fields as it passes pipeline stages" loading="lazy"><figcaption><b>Pipeline</b><span>One record changing as it moves through each stage.</span></figcaption></figure>
+      <figure><img src="assets/scenes/decision.jpg" alt="An item reaching a question and taking one of two outcomes" loading="lazy"><figcaption><b>Decision</b><span>Every business branch, with each outcome shown.</span></figcaption></figure>
+      <figure><img src="assets/scenes/checklist.jpg" alt="A list of checks ticking one by one, ending in a verdict" loading="lazy"><figcaption><b>Checklist</b><span>Validations, fraud rules and guardrails.</span></figcaption></figure>
+      <figure><img src="assets/scenes/queue.jpg" alt="Jobs moving from a queue to workers, one retrying" loading="lazy"><figcaption><b>Queue</b><span>Background jobs, workers and retries.</span></figcaption></figure>
+      <figure><img src="assets/scenes/screen.jpg" alt="A real screenshot of an app in a browser frame with highlighted elements" loading="lazy"><figcaption><b>Screen</b><span>Real screenshots of your running app, highlights measured from the page.</span></figcaption></figure>
+      <figure><img src="assets/scenes/code.jpg" alt="An editor window revealing real code with one line highlighted" loading="lazy"><figcaption><b>Code</b><span>The one rule developers should see, copied from the repo.</span></figcaption></figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="how">
+    <h2 id="how">How it works</h2>
+    <p class="sub">Accuracy first, then story, then motion.</p>
+    <div class="steps">
+      <div class="step"><b>Graph the code</b><span>Tree-sitter indexes 11 languages. Claude asks “who calls this?” instead of reading whole files, so big repos stay cheap.</span></div>
+      <div class="step"><b>Map every step</b><span><code>FLOW.md</code> lists every pipeline, step and branch with <code>file:line</code> and the exact code.</span></div>
+      <div class="step"><b>Check every claim</b><span>A script confirms each file, line and quote; a fresh reviewer agent checks what they mean.</span></div>
+      <div class="step"><b>Animate the story</b><span>Plain-language scenes in your brand style, original music, 16:9, 1:1 and 9:16, plus a post to share.</span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="look">
+    <h2 id="look">Looks like your product</h2>
+    <p class="sub">It reads your brand colours and fonts from Tailwind, CSS, theme files, Android, Flutter or iOS, and picks a style that fits your domain.</p>
+    <div class="styles">
+      <span class="chip"><i style="background:#7C5CFF"></i>midnight <small>anything</small></span>
+      <span class="chip"><i style="background:#D946EF"></i>neural <small>AI &amp; agents</small></span>
+      <span class="chip"><i style="background:#10B981"></i>ledger <small>fintech</small></span>
+      <span class="chip"><i style="background:#EA580C"></i>storefront <small>e-commerce</small></span>
+      <span class="chip"><i style="background:#0D9488"></i>clinic <small>healthcare</small></span>
+      <span class="chip"><i style="background:#4ADE80"></i>terminal <small>dev tools</small></span>
+      <span class="chip"><i style="background:#2563EB"></i>boardroom <small>enterprise</small></span>
+      <span class="chip"><i style="background:#22D3EE"></i>ocean <small>data</small></span>
+      <span class="chip"><i style="background:#8B5CF6"></i>candy <small>playful</small></span>
+      <span class="chip"><i style="background:#6D4AFF"></i>daylight <small>light</small></span>
+    </div>
+  </section>
+
+  <section aria-labelledby="trust">
+    <div class="two">
+      <div>
+        <h2 id="trust">Built not to make things up</h2>
+        <p class="sub">The video can only be as accurate as the map, and the map can only claim what the code shows.</p>
+      </div>
+      <ul class="checks">
+        <li>Every step and branch cites <code>file:line</code> and the exact code; a script rejects anything that does not match.</li>
+        <li>Every branch in the code is shown, or listed as deliberately left out, with a reason.</li>
+        <li>“Instantly”, “secure”, “always” and other claims are flagged unless the code proves them.</li>
+        <li>Suspected bugs found while tracing are reported, not animated away.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+<footer>
+  <span>MIT licensed · by Faizan Khan</span>
+  <span>The video above was rendered by the plugin from a hand-written storyboard.</span>
+</footer>
+<script>
+  const v = document.getElementById('hero');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (reduce.matches) { v.controls = true; } else { v.autoplay = true; v.play().catch(() => { v.controls = true; }); }
+  document.getElementById('copy').addEventListener('click', async (e) => {
+    try { await navigator.clipboard.writeText(document.getElementById('cmd').textContent); e.target.textContent = 'Copied'; }
+    catch { e.target.textContent = 'Select the text'; }
+    setTimeout(() => { e.target.textContent = 'Copy'; }, 1800);
+  });
+</script>
+</body>
+</html>

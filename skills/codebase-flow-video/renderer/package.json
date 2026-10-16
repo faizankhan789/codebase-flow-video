@@ -1,11 +1,19 @@
 {
   "name": "codebase-flow-video-renderer",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Renders a storyboard.json into animated MP4 videos (16:9, 1:1, 9:16).",
-  "bin": { "flow-render": "render.mjs", "flow-verify": "verify-flow.mjs" },
+  "description": "Code graph, FLOW.md verifier and renderer that turns a storyboard.json into animated MP4 videos (16:9, 1:1, 9:16).",
+  "bin": {
+    "flow-render": "render.mjs",
+    "flow-verify": "verify-flow.mjs",
+    "flow-graph": "graph.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "dependencies": {
+    "@vscode/tree-sitter-wasm": "0.3.1",
     "playwright": "1.63.0"
   },
   "license": "MIT"

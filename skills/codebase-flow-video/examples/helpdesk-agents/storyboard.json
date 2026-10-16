@@ -1,0 +1,299 @@
+{
+  "title": "HelpDesk AI",
+  "subtitle": "How a customer question becomes a checked, sourced answer",
+  "style": {
+    "preset": "neural"
+  },
+  "scenes": [
+    {
+      "title": "A customer asks",
+      "caption": "A customer writes in. The assistant reads the question and starts working on it.",
+      "visual": {
+        "type": "chat",
+        "title": "Support assistant",
+        "messages": [
+          {
+            "from": "user",
+            "text": "I was charged twice for order #1042. Can I get a refund?"
+          },
+          {
+            "from": "system",
+            "text": "Looked up order #1042 and the refund policy"
+          },
+          {
+            "from": "assistant",
+            "text": "You were charged twice on May 3. I have started a refund for the duplicate charge.",
+            "sources": [
+              "Refund policy",
+              "Order #1042"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "A team of agents",
+      "caption": "Behind the scenes, three agents split the work: one plans, one looks things up, one writes the reply.",
+      "visual": {
+        "type": "agents",
+        "agents": [
+          {
+            "id": "planner",
+            "name": "Planner",
+            "role": "Breaks down the request"
+          },
+          {
+            "id": "research",
+            "name": "Researcher",
+            "role": "Finds the facts",
+            "icon": "search"
+          },
+          {
+            "id": "writer",
+            "name": "Writer",
+            "role": "Drafts the answer",
+            "icon": "message"
+          }
+        ],
+        "tools": [
+          {
+            "id": "orders",
+            "name": "Order database",
+            "icon": "database"
+          },
+          {
+            "id": "docs",
+            "name": "Policy docs",
+            "icon": "file"
+          }
+        ],
+        "steps": [
+          {
+            "from": "planner",
+            "type": "think",
+            "text": "Duplicate charge, needs refund"
+          },
+          {
+            "from": "planner",
+            "to": "research",
+            "type": "handoff",
+            "text": "Check order #1042"
+          },
+          {
+            "from": "research",
+            "to": "orders",
+            "type": "tool",
+            "text": "Look up payments"
+          },
+          {
+            "from": "research",
+            "to": "docs",
+            "type": "tool",
+            "text": "Find refund rules"
+          },
+          {
+            "from": "research",
+            "to": "writer",
+            "type": "result",
+            "text": "Charged twice, refund allowed"
+          },
+          {
+            "from": "writer",
+            "type": "think",
+            "text": "Draft a clear reply"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Safety checks",
+      "caption": "Before anything is sent, the reply is checked so customers only get answers backed by real data.",
+      "visual": {
+        "type": "checklist",
+        "title": "Before sending",
+        "subject": "Reply to order #1042",
+        "items": [
+          {
+            "label": "Facts match the order record",
+            "ok": true
+          },
+          {
+            "label": "Refund is within policy",
+            "ok": true
+          },
+          {
+            "label": "No personal data leaked",
+            "ok": true
+          },
+          {
+            "label": "Tone is polite",
+            "ok": "warn"
+          }
+        ],
+        "result": {
+          "label": "Approved to send",
+          "ok": true
+        }
+      }
+    },
+    {
+      "title": "Refund decision",
+      "caption": "Refunds under the limit go through automatically. Larger ones wait for a person to approve.",
+      "visual": {
+        "type": "decision",
+        "item": "Refund for #1042",
+        "question": "Is the refund under the limit?",
+        "chosen": 0,
+        "options": [
+          {
+            "label": "yes",
+            "outcome": "Refunded automatically",
+            "ok": true
+          },
+          {
+            "label": "no",
+            "outcome": "Manager approves first",
+            "icon": "users",
+            "tone": "warn"
+          }
+        ]
+      }
+    },
+    {
+      "title": "The refund request",
+      "caption": "The refund goes to the payment system, which checks it, records it and confirms.",
+      "visual": {
+        "type": "request",
+        "client": {
+          "label": "HelpDesk AI",
+          "icon": "robot"
+        },
+        "server": {
+          "label": "Payments service",
+          "icon": "card"
+        },
+        "store": {
+          "label": "Ledger",
+          "icon": "database"
+        },
+        "request": "Refund duplicate charge",
+        "checks": [
+          {
+            "label": "Charge exists",
+            "ok": true
+          },
+          {
+            "label": "Not refunded yet",
+            "ok": true
+          },
+          {
+            "label": "Amount matches",
+            "ok": true
+          }
+        ],
+        "response": {
+          "label": "Refund confirmed",
+          "ok": true
+        }
+      }
+    },
+    {
+      "title": "What the ticket becomes",
+      "caption": "The ticket picks up new details at every step, so the full story is kept on record.",
+      "visual": {
+        "type": "pipeline",
+        "item": {
+          "title": "Ticket #88",
+          "icon": "message",
+          "fields": [
+            [
+              "customer",
+              "A. Rivera"
+            ],
+            [
+              "topic",
+              "billing"
+            ],
+            [
+              "status",
+              "new"
+            ]
+          ]
+        },
+        "stages": [
+          {
+            "label": "Classify",
+            "effect": "add",
+            "field": "intent",
+            "value": "refund"
+          },
+          {
+            "label": "Investigate",
+            "effect": "add",
+            "field": "order",
+            "value": "#1042"
+          },
+          {
+            "label": "Resolve",
+            "effect": "change",
+            "field": "status",
+            "value": "resolved"
+          },
+          {
+            "label": "Quality check",
+            "effect": "check",
+            "badge": "Reviewed"
+          }
+        ],
+        "output": {
+          "label": "Closed",
+          "icon": "check"
+        }
+      }
+    },
+    {
+      "title": "Follow-up emails",
+      "caption": "Confirmation emails go into a queue, so a busy moment does not slow down the chat. Failed sends retry.",
+      "visual": {
+        "type": "queue",
+        "label": "Email queue",
+        "jobs": [
+          "Refund receipt",
+          "Survey",
+          "Receipt #2",
+          "Reminder"
+        ],
+        "workers": 2,
+        "retry": true,
+        "done": "Sent"
+      }
+    },
+    {
+      "title": "The rule in the code",
+      "caption": "For developers: the refund limit is one clear rule in the code.",
+      "visual": {
+        "type": "code",
+        "file": "src/refunds/policy.ts",
+        "startLine": 12,
+        "highlight": [
+          14
+        ],
+        "lines": [
+          "export function decide(refund: Refund) {",
+          "  const limit = settings.autoRefundLimit;",
+          "  if (refund.amount <= limit) {",
+          "    return approve(refund);",
+          "  }",
+          "  return askManager(refund);",
+          "}"
+        ],
+        "note": "One setting controls the limit"
+      }
+    }
+  ],
+  "outro": {
+    "caption": "Every answer sourced, checked and acted on.",
+    "kicker": "The full picture",
+    "cta": "Fictional demo product · made with codebase-flow-video"
+  }
+}

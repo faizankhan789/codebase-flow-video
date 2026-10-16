@@ -1,16 +1,17 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "codebase-flow-video",
-  "description": "Animated end-to-end explainer videos of any codebase.",
+  "description": "Animated, code-verified explainer videos of any codebase.",
   "owner": {
     "name": "Faizan Khan"
   },
   "plugins": [
     {
       "name": "codebase-flow-video",
-      "description": "Understands a codebase end to end and turns its pipeline into an animated explainer video (16:9, 1:1, 9:16).",
+      "description": "Reads a codebase with a code graph, verifies every claim, and renders an animated explainer that shows the product working, in your brand style, with original music (16:9, 1:1, 9:16).",
       "source": "./",
-      "category": "productivity"
+      "category": "productivity",
+      "version": "2.0.0"
     }
   ]
 }

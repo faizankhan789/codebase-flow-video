@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup for the renderer: installs Playwright + headless Chromium and checks ffmpeg.
+# One-time setup: installs Playwright + headless Chromium and the tree-sitter parsers, and checks ffmpeg.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -12,7 +12,7 @@ command -v ffmpeg >/dev/null || {
   exit 1
 }
 
-if [ ! -d node_modules/playwright ]; then
+if [ ! -d node_modules/playwright ] || [ ! -d node_modules/@vscode/tree-sitter-wasm ]; then
   npm install --no-audit --no-fund --loglevel=error
 fi
 npx playwright install chromium

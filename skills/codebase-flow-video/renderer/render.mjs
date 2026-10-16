@@ -2,16 +2,21 @@
 // Renders storyboard.json into animated MP4s (16:9, 1:1, 9:16) using headless Chromium + ffmpeg.
 //
 //   node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16]
-//                   [--preview] [--music FILE] [--volume 0.5] [--fps 30] [--check]
-//                   [--flow FLOW.md] [--list-icons]
+//                   [--preview] [--music FILE | --no-music] [--volume 0.5] [--fps 30] [--check]
+//
+// Without --music, an original track is generated to fit the video (music.mjs); --no-music renders silent.
+//                   [--flow FLOW.md] [--list-icons] [--list-styles]
 //
 // When FLOW.md sits next to the storyboard (or --flow is given), every storyboard "ref" is
 // checked against it and every branch in its branch index must be shown or listed in "omitted".
-import { readFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync, statSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadFlow, flowIds, defaultFlowPath } from './flowdoc.mjs';
+import { resolveStyle, listStyles } from './style.mjs';
+import { validateVisual, visualText } from './visuals.mjs';
+import { generateMusic } from './music.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENGINE = pathToFileURL(join(HERE, 'engine', 'index.html')).href;
@@ -20,7 +25,7 @@ const FORMATS = { '16x9': [1920, 1080], '1x1': [1080, 1080], '9x16': [1080, 1920
 const KINDS = ['actor', 'step', 'decision', 'store', 'external', 'ai', 'output'];
 
 function parseArgs(argv) {
-  const opts = { formats: Object.keys(FORMATS), fps: 30, volume: 0.5 };
+  const opts = { formats: Object.keys(FORMATS), fps: 30 };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -30,10 +35,12 @@ function parseArgs(argv) {
     else if (a === '--preview') opts.preview = true;
     else if (a === '--check') opts.check = true;
     else if (a === '--music') opts.music = next();
+    else if (a === '--no-music') opts.noMusic = true;
     else if (a === '--volume') opts.volume = Number(next());
     else if (a === '--fps') opts.fps = Number(next());
     else if (a === '--flow') opts.flow = next();
     else if (a === '--list-icons') opts.listIcons = true;
+    else if (a === '--list-styles') opts.listStyles = true;
     else if (a === '--help' || a === '-h') opts.help = true;
     else rest.push(a);
   }
@@ -59,9 +66,12 @@ export function validate(sb, flow = null) {
   if (!sb.title) errs.push('missing "title"');
   if (sb.theme && !['dark', 'light'].includes(sb.theme)) errs.push('"theme" must be "dark" or "light"');
   if (sb.accent && !/^#[0-9a-fA-F]{6}$/.test(sb.accent)) errs.push('"accent" must be a hex colour like #7C5CFF');
-  if (!Array.isArray(sb.nodes) || !sb.nodes.length) errs.push('"nodes" must be a non-empty array');
+  if (sb.nodes !== undefined && !Array.isArray(sb.nodes)) errs.push('"nodes" must be an array');
   if (!Array.isArray(sb.scenes) || !sb.scenes.length) errs.push('"scenes" must be a non-empty array');
   if (errs.length) return errs;
+  sb.nodes = sb.nodes || [];
+  const mapScenes = sb.scenes.filter((s) => !s.visual);
+  if (!sb.nodes.length && mapScenes.length) errs.push(`${mapScenes.length} scene(s) have no "visual" and there are no "nodes" to show; give each scene a visual or add nodes`);
 
   const ids = new Set();
   sb.nodes.forEach((n, i) => {
@@ -106,8 +116,12 @@ export function validate(sb, flow = null) {
       else if (!revealed.has(a) || !revealed.has(b)) errs.push(`${at}.flow: ${a} -> ${b} used before both nodes are revealed`);
     });
     if (s.hold !== undefined && !(s.hold >= 0)) errs.push(`${at}.hold must be a number >= 0`);
+    if (s.visual !== undefined) {
+      errs.push(...validateVisual(s.visual, `${at}.visual`, ICONS));
+      if (s.flow?.length) errs.push(`${at}: a scene with a "visual" cannot also have "flow" (packets run on the map only)`);
+    }
   });
-  if (!revealed.size) errs.push('no scene reveals any node');
+  if (sb.nodes.length && !revealed.size) errs.push('no scene reveals any node');
 
   if (sb.omitted !== undefined && !Array.isArray(sb.omitted)) errs.push('"omitted" must be an array of { "ref", "reason" }');
   const omitted = Array.isArray(sb.omitted) ? sb.omitted : [];
@@ -169,12 +183,13 @@ function accuracyWarnings(sb, flow) {
   const hasRef = (o) => asList(o.ref).length > 0;
   const texts = [['subtitle', sb, sb.subtitle], ['outro', sb.outro || {}, sb.outro && `${sb.outro.caption || ''} ${sb.outro.cta || ''}`]];
   sb.nodes.forEach((n) => texts.push([`node "${n.id}"`, n, `${n.label} ${n.sub || ''}`]));
-  sb.scenes.forEach((s, i) => texts.push([`scene ${i + 1}`, s, `${s.title || ''} ${s.caption}`]));
+  sb.scenes.forEach((s, i) => texts.push([`scene ${i + 1}`, s, `${s.title || ''} ${s.caption} ${visualText(s.visual)}`]));
   for (const [name, obj, text] of texts) {
     const claim = claimIn(text);
     if (claim && !hasRef(obj)) w.push(`${name}: "${claim}" is a speed/security/absolute claim; keep it only if FLOW.md cites code for it (add "ref"), otherwise remove it`);
   }
   if (flow) {
+    sb.scenes.forEach((s, i) => { if (s.visual && !hasRef(s)) w.push(`scene ${i + 1}: animated "${s.visual.type}" scene has no "ref" to the FLOW.md steps it shows`); });
     sb.nodes.forEach((n) => {
       if (n.kind === 'actor') return;
       if (!hasRef(n)) w.push(`node "${n.id}" has no "ref" to a FLOW.md step or branch`);
@@ -217,6 +232,19 @@ async function loadPlaywright() {
   }
 }
 
+// Style, font and screenshot paths are resolved here so the page only receives file URLs.
+function prepareAssets(sb, sbDir) {
+  const r = resolveStyle(sb, sbDir);
+  const images = {}, errors = [...r.errors];
+  for (const s of sb.scenes) {
+    if (s.visual?.type !== 'screen' || !s.visual.src) continue;
+    const f = resolve(sbDir, s.visual.src);
+    if (!existsSync(f)) errors.push(`screenshot not found: ${f}`);
+    else images[s.visual.src] = pathToFileURL(f).href;
+  }
+  return { style: r.style, fontUrl: r.fontUrl, images, errors, warnings: r.warnings };
+}
+
 async function openPage(browser, sb, fmt) {
   const [width, height] = FORMATS[fmt];
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
@@ -226,7 +254,8 @@ async function openPage(browser, sb, fmt) {
   await page.evaluate(() => document.fonts.ready);
   let info;
   try {
-    info = await page.evaluate(([s, o]) => window.__setup(s, o), [sb, { width, height, icons: ICONS }]);
+    const a = sb.__assets;
+    info = await page.evaluate(([s, o]) => window.__setup(s, o), [sb, { width, height, icons: ICONS, style: a.style, images: a.images, fontUrl: a.fontUrl }]);
   } catch (e) {
     fail(`[${fmt}] engine error: ${e.message}${errors.length ? '\n' + errors.join('\n') : ''}`);
   }
@@ -295,8 +324,9 @@ async function render(browser, sb, fmt, outDir, opts) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.listIcons) { console.log(Object.keys(ICONS).join('\n')); return; }
+  if (opts.listStyles) { console.log(listStyles().join('\n')); return; }
   if (opts.help || !opts.storyboard) {
-    console.log('Usage: node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16] [--preview] [--check] [--music FILE] [--volume 0.5] [--fps 30] [--flow FLOW.md] [--list-icons]');
+    console.log('Usage: node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16] [--preview] [--check] [--music FILE | --no-music] [--volume 0.5] [--fps 30] [--flow FLOW.md] [--list-icons] [--list-styles]');
     process.exit(opts.help ? 0 : 1);
   }
   const sbPath = resolve(opts.storyboard);
@@ -320,6 +350,11 @@ async function main() {
 
   const outDir = resolve(opts.out || dirname(sbPath));
   mkdirSync(outDir, { recursive: true });
+  const assets = prepareAssets(sb, dirname(sbPath));
+  if (assets.errors.length) fail(`Storyboard has ${assets.errors.length} problem(s):\n- ${assets.errors.join('\n- ')}`);
+  Object.defineProperty(sb, '__assets', { value: assets, enumerable: false });
+  assets.warnings.forEach((w) => console.log(`WARN ${w}`));
+  console.log(`Style: ${assets.style.preset}`);
   softWarnings(sb, flow).forEach((w) => console.log(`WARN ${w}`));
 
   const chromium = await loadPlaywright();
@@ -342,12 +377,25 @@ async function main() {
       return;
     }
 
+    let generated = null;
+    if (!opts.music && !opts.noMusic) {
+      // Compose a track that changes chord at each scene start, using the first format's timing.
+      const { page, info } = await openPage(browser, sb, opts.formats[0]);
+      await page.close();
+      generated = join(outDir, '.music.wav');
+      generateMusic(generated, { duration: info.duration, boundaries: [info.intro, ...info.marks.map((m) => m.start), info.outroStart, info.endStart], style: assets.style });
+      opts.music = generated;
+      opts.volume = opts.volume ?? 0.35;
+      console.log(`Music: original track generated for this video (${assets.style.preset}, ${assets.style.motion}); pass --no-music for silence`);
+    }
+    opts.volume = opts.volume ?? 0.5;
     console.log(`Rendering ${opts.formats.join(', ')} at ${opts.fps} fps into ${outDir}`);
     const results = await Promise.all(opts.formats.map((fmt) => render(browser, sb, fmt, outDir, opts)));
     for (const { out, info } of results) {
       info.warnings.forEach((w) => console.log(`WARN [${basename(out)}] ${w}`));
       console.log(`DONE ${out} (${fmtTime(info.duration)})`);
     }
+    if (generated) rmSync(generated, { force: true });
     const longest = Math.max(...results.map((r) => r.info.duration));
     if (longest > 600) console.log(`WARN video is ${fmtTime(longest)}; LinkedIn caps uploads at 10:00. Consider a highlights storyboard.`);
   } finally {

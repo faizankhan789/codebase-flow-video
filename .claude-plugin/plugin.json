@@ -1,10 +1,23 @@
 {
   "name": "codebase-flow-video",
-  "version": "1.0.0",
-  "description": "Understands a codebase end to end (every pipeline, step and branch) and turns it into an animated explainer video in 16:9, 1:1 and 9:16 for clients, executives and LinkedIn.",
+  "version": "2.0.0",
+  "description": "Understands a codebase end to end with a tree-sitter code graph, verifies every claim against the code, and renders an animated explainer that shows the product working (agents, chat, requests, pipelines, real screenshots) in your brand style, with original music, in 16:9, 1:1 and 9:16.",
   "author": {
     "name": "Faizan Khan"
   },
   "license": "MIT",
-  "keywords": ["video", "animation", "architecture", "documentation", "onboarding", "linkedin"]
+  "keywords": [
+    "video",
+    "animation",
+    "explainer",
+    "architecture",
+    "code-graph",
+    "tree-sitter",
+    "documentation",
+    "onboarding",
+    "linkedin",
+    "agents"
+  ],
+  "homepage": "https://github.com/faizankhan789/codebase-flow-video",
+  "repository": "https://github.com/faizankhan789/codebase-flow-video"
 }

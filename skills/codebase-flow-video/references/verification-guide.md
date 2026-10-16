@@ -28,7 +28,7 @@ Repeat until it reports 0 errors.
 Dispatch **one** subagent (or one per pipeline for large repos, in parallel, in a single message). It must not be the agent that wrote `FLOW.md` and must not receive your trace notes, only the file and the repo. Prompt:
 
 > You are verifying `flow-video/FLOW.md` against the code in this repository. Treat every claim as unproven. For each step (`**P…**`) and each branch-index row (`| B… |`):
-> 1. Open the cited `file:line` and read enough surrounding code (the whole function, plus callers or callees if needed) to judge the claim.
+> 1. Open the cited `file:line` and read enough surrounding code to judge the claim. Use the code graph instead of reading whole files: `node <skill-dir>/renderer/graph.mjs show <file:line>` prints the enclosing function, `calls` / `callers` show what it calls and who calls it.
 > 2. Check the "Does" line, the In/Out data, the condition and every listed outcome.
 > 3. Check that the step really follows the previous one: the previous step calls it, enqueues it or hands its data to it.
 > 4. For branches: is the condition reachable? Is the default config value as stated? Are there outcomes the line lists but the code does not have, or outcomes the code has that the line omits?
