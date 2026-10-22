@@ -80,7 +80,8 @@
     return rgbHex([(r + m) * 255, (g + m) * 255, (b + m) * 255]);
   }
   const shift = (hex, dh, dl = 0, ds = 0) => { if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex; const [h, s, l] = toHsl(hex); return fromHsl((h + dh + 360) % 360, Math.max(0, Math.min(1, s + ds)), Math.max(0, Math.min(1, l + dl))); };
-  const rgba = (hex, a) => { if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex; const [r, g, b] = hexRgb(hex); return `rgba(${r},${g},${b},${a})`; };
+  // Fails closed: anything that is not a plain colour becomes transparent instead of reaching CSS.
+  const rgba = (hex, a) => { if (!/^#[0-9a-f]{6}$/i.test(hex)) return SAFE_COLOR.test(String(hex)) ? hex : 'transparent'; const [r, g, b] = hexRgb(hex); return `rgba(${r},${g},${b},${a})`; };
 
   // Shared paints (gradients) registered once in <defs>; scenes get them through ctx.paint.
   const paint = {
@@ -961,8 +962,21 @@
     })));
   }
 
+  // Defence in depth for values that end up in inline CSS and HTML: every colour must be a plain colour
+  // and the font list plain names, whatever the caller passed (style.mjs validates them first).
+  const SAFE_COLOR = /^(#[0-9a-f]{6}|rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+\s*)?\))$/i;
+  function sanitizeStyle(st) {
+    const fix = (v, fb) => (typeof v === 'string' && SAFE_COLOR.test(v) ? v : fb);
+    for (const k of ['accent', 'accent2', 'good', 'bad', 'warn']) if (k in st) st[k] = fix(st[k], '#7C5CFF');
+    for (const group of ['colors', 'kinds']) for (const k of Object.keys(st[group] || {})) st[group][k] = fix(st[group][k], '#888888');
+    if (Array.isArray(st.blobs)) st.blobs = st.blobs.filter((c) => typeof c === 'string' && SAFE_COLOR.test(c));
+    if (st.font && typeof st.font.family === 'string' && !/^[\w\s\-,"]{1,200}$/.test(st.font.family)) st.font.family = FONT;
+    return st;
+  }
+
   window.__setup = async (sb, opts) => {
     W = opts.width; H = opts.height; ICONS = opts.icons;
+    if (opts.style) sanitizeStyle(opts.style);
     base = Math.min(W, H);
     warnings = []; notes = []; clipErrors = [];
     if (window.FlowMotion) window.FlowMotion.setPersonality((opts.style && opts.style.motion) || 'standard');

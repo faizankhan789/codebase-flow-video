@@ -24,7 +24,7 @@ Any other https URL. `fetch-source.mjs` opens the page and up to `--pages` (defa
   "brand": { "accent": "rgb(…)", "font": "Inter" } } ] }
 ```
 
-It is read-only: no forms, no logins, no clicks beyond loading pages, and navigation to other sites is blocked. There is no code, so there is no `FLOW.md`; the rules change accordingly:
+It is read-only: no forms, no logins, no clicks beyond loading pages, and navigation to other sites is blocked. Private, loopback and link-local addresses (localhost, 10.x, 192.168.x, cloud metadata and so on) are refused, for the page and for everything it loads; pass `--allow-local` only for a host the user owns. URLs with credentials in them are refused. There is no code, so there is no `FLOW.md`; the rules change accordingly:
 
 - **Claims come only from the site's own words** (`h1`, `h2`, `description`, buttons). Never add features, numbers or customers the site does not state.
 - **Style:** `launch` for SaaS and AI products, or the closest preset; put `brand.accent` (converted to hex) in `style.accent` and `brand.font` in `style.font.family`.

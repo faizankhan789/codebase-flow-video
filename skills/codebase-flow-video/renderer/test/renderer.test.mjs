@@ -58,6 +58,14 @@ test('styles resolve presets, overrides and keep brand colours readable', () => 
   for (const [name, p] of Object.entries(PRESETS)) assert.ok(contrast(p.colors.text, p.colors.bg) >= 7, `${name} text contrast`);
 });
 
+test('style values that reach CSS or HTML are validated', () => {
+  const bad = resolveStyle({ style: { preset: 'launch', colors: { card: 'red;}</style><script>alert(1)</script>' } } }, HERE);
+  assert.ok(has(bad.errors, /style\.colors\.card must be/));
+  assert.deepEqual(resolveStyle({ style: { colors: { panel: 'rgba(10,15,30,0.8)', card: '#121A30' } } }, HERE).errors, []);
+  assert.ok(has(resolveStyle({ style: { font: { family: 'Inter; } body { background:url(x)' } } }, HERE).errors, /font\.family/));
+  assert.match(resolveStyle({ style: { font: { family: 'IBM Plex Sans, Inter' } } }, HERE).style.font.family, /^"IBM Plex Sans", Inter, /);
+});
+
 test('background is white by default, adapts to any colour, and --bg wins', () => {
   for (const name of Object.keys(PRESETS)) {
     const st = resolveStyle({ style: { preset: name } }, HERE).style;
@@ -174,4 +182,9 @@ test('URLs are classified as git repositories, websites or refused', async () =>
   assert.equal(classify('git@github.com:org/repo.git').kind, 'git');
   assert.equal(classify('https://example.com/pricing').kind, 'site');
   for (const bad of ['file:///etc/passwd', 'ext::sh -c touch', 'javascript:alert(1)', 'not a url']) assert.equal(classify(bad).kind, 'invalid', bad);
+  assert.equal(classify('https://user:pw@example.com/').kind, 'invalid', 'credentials in URL');
+  const { isPrivateIp } = await import('../fetch-source.mjs');
+  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1'])
+    assert.ok(isPrivateIp(ip), `${ip} is private`);
+  for (const ip of ['8.8.8.8', '140.82.112.3', '2606:4700::1111']) assert.ok(!isPrivateIp(ip), `${ip} is public`);
 });

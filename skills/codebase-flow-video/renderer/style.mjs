@@ -6,6 +6,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PRESETS = JSON.parse(readFileSync(join(HERE, 'engine', 'styles.json'), 'utf8'));
 const HEX = /^#[0-9a-fA-F]{6}$/;
+// Colour slots also accept rgb()/rgba() (presets use rgba for panels and shadows); nothing else, so a
+// storyboard value can never break out of the inline CSS or HTML the engine builds with it.
+const COLOR = /^(#[0-9a-fA-F]{6}|rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+\s*)?\))$/;
+// Font family names: letters, digits, spaces, hyphens and commas only.
+const FONT = /^[\w\s\-,]{1,80}$/;
 
 // ---------- colour maths (WCAG relative luminance) ----------
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -86,7 +91,11 @@ export function resolveStyle(sb, sbDir, cliBg) {
   if (o.theme !== undefined && !['light', 'dark', 'white'].includes(o.theme)) errors.push('style.theme must be light or dark');
   if (o.bg !== undefined && !HEX.test(o.bg)) errors.push('style.bg must be a hex colour like #FFFFFF');
   if (!errors.length) { const e = applyBackground(st, o, sb, cliBg); if (e) errors.push(e); }
-  for (const [k, v] of Object.entries(o.colors || {})) { if (!(k in st.colors)) errors.push(`style.colors.${k} is not a colour slot (${Object.keys(st.colors).join(', ')})`); else st.colors[k] = v; }
+  for (const [k, v] of Object.entries(o.colors || {})) {
+    if (!(k in st.colors)) errors.push(`style.colors.${k} is not a colour slot (${Object.keys(st.colors).join(', ')})`);
+    else if (typeof v !== 'string' || !COLOR.test(v)) errors.push(`style.colors.${k} must be a hex colour like #121A30 or rgb()/rgba()`);
+    else st.colors[k] = v;
+  }
   for (const [k, v] of Object.entries(o.kinds || {})) { if (!HEX.test(v)) errors.push(`style.kinds.${k} must be hex`); else st.kinds[k] = v; }
   if (o.radius !== undefined) { if (!(o.radius >= 0 && o.radius <= 40)) errors.push('style.radius must be 0-40'); else st.radius = o.radius; }
   if (o.background !== undefined) { if (!['glow-dots', 'grid', 'plain'].includes(o.background)) errors.push('style.background must be glow-dots, grid or plain'); else st.background = o.background; }
@@ -105,7 +114,8 @@ export function resolveStyle(sb, sbDir, cliBg) {
     else if (!existsSync(f)) errors.push(`style.font.file not found: ${f}`);
     else { fontUrl = pathToFileURL(f).href; st.font.name = 'BrandFont'; st.font.family = `"BrandFont", ${st.font.family}`; }
   } else if (o.font?.family) {
-    st.font.family = `${/[\s"]/.test(o.font.family) && !o.font.family.includes(',') ? `"${o.font.family.replace(/"/g, '')}"` : o.font.family}, ${st.font.family}`;
+    if (typeof o.font.family !== 'string' || !FONT.test(o.font.family)) errors.push('style.font.family may contain only letters, digits, spaces, hyphens and commas');
+    else st.font.family = `${o.font.family.split(',').map((f) => f.trim()).filter(Boolean).map((f) => (/\s/.test(f) ? `"${f}"` : f)).join(', ')}, ${st.font.family}`;
   }
 
   // Brand colours often fail on the video background; nudge them until readable and say so.

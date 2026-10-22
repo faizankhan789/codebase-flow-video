@@ -9,10 +9,13 @@
 // Website (any other https URL):
 //   visits the page and up to N same-site pages from its navigation (default 4), saves screenshots and
 //   writes site.json (title, description, headings, navigation, brand colour and font) into DIR/flow-video/.
-//   Read-only: no forms, no logins, never leaves the site.
+//   Read-only: no forms, no logins, never leaves the site. Private, loopback and link-local addresses are
+//   refused (for the page and everything it loads) unless --allow-local is passed for a host you own.
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { pathToFileURL } from 'node:url';
 
 const GIT_HOSTS = /^(github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|gitea\.com|sr\.ht|git\.sr\.ht)$/i;
@@ -24,6 +27,7 @@ export function classify(raw) {
   let u;
   try { u = new URL(url); } catch { return { kind: 'invalid', reason: 'not a URL' }; }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return { kind: 'invalid', reason: `${u.protocol} URLs are not supported (use https)` };
+  if (u.username || u.password) return { kind: 'invalid', reason: 'URLs with credentials are not supported' };
   const parts = u.pathname.split('/').filter(Boolean);
   if (GIT_HOSTS.test(u.hostname) && parts.length >= 2) {
     const [owner, repoRaw, sep, ...rest] = parts;
@@ -53,7 +57,34 @@ function cloneRepo(c, out) {
   return { root };
 }
 
-async function tourSite(c, out, maxPages) {
+// Addresses a website tour must not reach: loopback, private, link-local, carrier-grade NAT, unique-local,
+// multicast and unspecified ranges (IPv4, IPv6 and IPv4-mapped IPv6).
+export function isPrivateIp(ip) {
+  const v = String(ip).toLowerCase().replace(/^::ffff:/, '');
+  if (isIP(v) === 4) {
+    const [a, b] = v.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+      || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+  }
+  return v === '::' || v === '::1' || /^f[cd]/.test(v) || /^fe[89ab]/.test(v) || /^ff/.test(v);
+}
+const hostCache = new Map();
+async function hostIsPrivate(hostname) {
+  const h = hostname.replace(/^\[|\]$/g, '');
+  if (!hostCache.has(h)) {
+    hostCache.set(h, (async () => {
+      if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
+      if (isIP(h)) return isPrivateIp(h);
+      try { return (await lookup(h, { all: true })).some((r) => isPrivateIp(r.address)); } catch { return true; }
+    })());
+  }
+  return hostCache.get(h);
+}
+
+async function tourSite(c, out, maxPages, allowLocal) {
+  if (!allowLocal && await hostIsPrivate(new URL(c.url).hostname)) {
+    return { error: `${c.url} points to a private or local address; pass --allow-local only for a host you own` };
+  }
   const { chromium } = await import('playwright');
   const dir = join(out, 'flow-video');
   mkdirSync(join(dir, 'screens'), { recursive: true });
@@ -64,10 +95,16 @@ async function tourSite(c, out, maxPages) {
   try {
     const visit = async (url, id) => {
       const page = await ctx.newPage();
-      // Never leave the site: block requests for top-level documents on other origins.
-      await page.route('**/*', (route) => {
+      // Never leave the site: block top-level documents on other origins. Never reach private or local
+      // addresses: every request (redirects and sub-resources included) is resolved and checked.
+      await page.route('**/*', async (route) => {
         const r = route.request();
-        if (r.isNavigationRequest() && r.frame() === page.mainFrame() && new URL(r.url()).origin !== origin) return route.abort();
+        let u;
+        try { u = new URL(r.url()); } catch { return route.abort(); }
+        if (u.protocol === 'data:' || u.protocol === 'blob:') return route.continue();
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') return route.abort();
+        if (r.isNavigationRequest() && r.frame() === page.mainFrame() && u.origin !== origin) return route.abort();
+        if (!allowLocal && await hostIsPrivate(u.hostname)) return route.abort();
         return route.continue();
       });
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -107,7 +144,7 @@ async function main() {
   const args = process.argv.slice(2);
   const url = args.find((a) => !a.startsWith('--'));
   const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-  if (!url) { console.error('Usage: node fetch-source.mjs <url> [--out DIR] [--pages N]'); process.exit(1); }
+  if (!url) { console.error('Usage: node fetch-source.mjs <url> [--out DIR] [--pages N] [--allow-local]'); process.exit(1); }
   const c = classify(url);
   if (c.kind === 'invalid') { console.error(`Cannot use ${url}: ${c.reason}`); process.exit(1); }
   if (c.kind === 'git') {
@@ -119,7 +156,8 @@ async function main() {
     return;
   }
   const out = resolve(opt('--out', `site-${c.host.replace(/[^\w.-]/g, '')}`));
-  const r = await tourSite(c, out, Math.max(0, Math.min(8, Number(opt('--pages', 4)))));
+  const r = await tourSite(c, out, Math.max(0, Math.min(8, Number(opt('--pages', 4)))), args.includes('--allow-local'));
+  if (r.error) { console.error(r.error); process.exit(1); }
   console.log(`SITE ${r.dir}/site.json (${r.pages} page(s), screenshots in ${r.dir}/screens)`);
   console.log('Next: write a storyboard from site.json (headline + showcase scenes using the screenshots); see references/url-guide.md.');
 }
