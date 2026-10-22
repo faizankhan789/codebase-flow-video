@@ -1,6 +1,6 @@
 {
   "name": "codebase-flow-video",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Understands a codebase end to end with a tree-sitter code graph, verifies every claim against the code, and renders an animated explainer that shows the product working (agents, chat, requests, pipelines, real screenshots) in your brand style, with original music, in 16:9, 1:1 and 9:16.",
   "author": {
     "name": "Faizan Khan"

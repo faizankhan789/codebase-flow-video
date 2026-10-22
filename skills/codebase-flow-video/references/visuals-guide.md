@@ -4,10 +4,29 @@ A box-and-arrow chart explains structure; it does not show the product working. 
 
 **Rules**
 
+0. **Look.** The default look is vivid: deep colour fields, translucent glass cards, gradient badges, drifting light. `"style": { "look": "flat" }` turns it off (plain cards) for documents or very formal audiences.
 1. **Every visual must come from `FLOW.md`.** Agent names, tools, checks, fields, outcomes and queue behaviour are the ones the code has. Example values (an order number, a ticket title) must be realistic and invented, never real customer data. Give the scene a `ref` to the steps or branches it shows.
 2. **Pick the visual from the code's shape** (table below). A storyboard can mix visuals and map scenes; the map is best as a short overview, not the whole video. A storyboard with only visuals needs no `nodes`; its outro is a numbered recap of the scene titles.
 3. **One idea per scene.** Split long agent conversations or pipelines into several scenes (limits are enforced: 8 agent steps, 7 messages, 6 stages, 7 checks, 4 outcomes, 6 jobs, 16 code lines).
 4. **Captions still carry the "so what".** The visual shows *how*; the caption says *why it matters*. No code words in either, except the `code` visual for developer audiences.
+
+## Story arcs: the shape of the video follows the code
+
+Do not use one template for every repo. Pick the arc for what the system is, then fill it from `FLOW.md`. Several pipelines become chapters; each chapter follows the arc of its own pipeline.
+
+| The system is… | Arc (scene types in order) | `journey` item |
+|---|---|---|
+| Any product, launch or LinkedIn cut ("launch film", like agency SaaS videos) | `headline` hook → `showcase` of the product with callouts → per feature: `headline` (`orb` variant to change section) then the scene that shows it working (`agents`, `chat`, `request`…) → `showcase` of the result → sparkle outro. Style `launch` | the main object |
+| AI agents / multi-agent | the request (`chat` or `screen`) → meet the agents (`agents`, cast only) → the work, one `agents` scene per phase with tool calls → guardrails (`checklist`) → outcome branches (`decision`) → the answer (`chat`) | the task or ticket |
+| RAG / assistant | the question (`chat`) → retrieval (`pipeline`: query → search → rank → context) → the answer with sources (`chat`) → fallbacks (`decision`) | the question |
+| API / SaaS backend | the user action (`screen`) → the request (`request` with real checks) → each business branch (`decision`) → background work (`queue`) → what the user sees (`screen` or `chat`) | the order / record |
+| Data / ETL / ML | the source → one record through every stage (`pipeline`, several scenes if needed) → quality gates (`checklist`) → failures and retries (`queue`) → the output (`screen`) | the record |
+| E-commerce / marketplace | browse (`screen`) → checkout (`request`) → payment and stock (`decision`) → fulfilment (`queue`) → confirmation (`chat` or `screen`) | the order |
+| Fintech / payments | the payment (`request`) → risk and compliance (`checklist`) → approve / review / decline (`decision`) → ledger (`pipeline`) → notifications (`queue`) | the payment |
+| Developer tool / CLI / library | the command (`code` or `request`) → what happens inside (`pipeline`) → options and errors (`decision`) → the result (`code` or `screen`) | the command or file |
+| Mobile app | the screen (`screen`, device phone) → the API it calls (`request`) → branches (`decision`) → sync / push (`queue`) | the user action |
+
+Layouts also adapt to the data: an agent that talks to every other agent is drawn as a hub in the middle; decision outcomes form a row or a grid; pipelines run left-to-right or top-to-bottom by format.
 
 ## Which visual for which code
 
@@ -102,6 +121,25 @@ Effects: `add` (new field slides in), `change` (value flips, highlighted), `remo
 ```
 `src` is relative to the storyboard. Paste the snippet `capture.mjs` prints (highlights are measured from real elements). `device`: `browser`, `phone` or `none`.
 
+### headline (kinetic title)
+```json
+{ "type": "headline", "text": "Smart control", "sub": "One dashboard for every agent", "icon": "sparkles", "variant": "lines" }
+```
+Big gradient words revealed one by one under a glowing emblem with light lines (`variant: "lines"`, default), or zooming through a glass lens with orbiting orbs (`variant: "orb"`). 2-6 words; `sub` one short line. Use it to open the video, to open each section or chapter, and before the payoff. No caption needed.
+
+### showcase (the product in 3D)
+```json
+{ "type": "showcase",
+  "src": "screens/home.png", "url": "app.example.com",
+  "ui": { "app": "NeuraDesk", "nav": [{ "label": "Dashboard", "icon": "chart" }, { "label": "Tickets", "icon": "message" }],
+          "greeting": "Hello, Mark", "headline": "How can I help you today?", "actions": ["Ask AI", "New ticket"],
+          "widgets": [ { "type": "stat", "title": "Open tickets", "value": "24", "sub": "6 need a person" }, { "type": "ring", "title": "Resolved by AI", "value": 82 },
+                       { "type": "list", "title": "Today", "items": ["Refund for #1042"] }, { "type": "chart", "title": "This week", "items": [4, 6, 5, 8] },
+                       { "type": "chat", "title": "Ask", "value": "Summarise ticket #88" } ] },
+  "callouts": [ { "title": "Live status", "text": "Every agent's work, as it happens", "icon": "bolt" } ] }
+```
+A glass window tilted in real 3D that slowly turns and moves closer, with a light sweep, blurred ghost panels behind it for depth, and up to 4 callout cards popping out around it (left/right on 16:9, above/below on square and vertical). Give either `src` (a real screenshot from `capture.mjs` or `fetch-source.mjs`; preferred) or `ui` (a dashboard mock-up). A `ui` mock-up must use the product's real screen names, navigation and data shapes from the code (routes, models, labels) with invented example values; never invent features. No caption needed.
+
 ### code (developer audiences only)
 ```json
 { "type": "code", "file": "src/refunds/policy.ts", "startLine": 12, "highlight": [14],
@@ -114,9 +152,12 @@ Lines are copied exactly from the repo (use `graph.mjs show`); `highlight` uses 
 
 The renderer's look comes from `"style"` (see `storyboard-guide.md`). Run `node <skill-dir>/renderer/detect-style.mjs .` for the repo's own brand colours and font plus a preset suggestion; `node <skill-dir>/renderer/render.mjs --list-styles` lists presets:
 
+Every preset renders on **white by default**; the preset sets the accents, glow colours, corners, font and pace. Use `"theme": "dark"` (or `--bg dark`) for its dark cinematic look, or `"bg": "#hex"` for a brand background; every card, text, icon and glow adapts.
+
 | Preset | For |
 |---|---|
-| `midnight` | default, anything (dark violet) |
+| `launch` | cinematic SaaS / AI product launch: navy-black, electric blue glow, light lines, sparkle outro |
+| `midnight` | default, anything (violet) |
 | `daylight` | light version for documents and slides |
 | `neural` | AI, agents, LLM apps |
 | `ledger` | fintech, payments, banking, insurance |

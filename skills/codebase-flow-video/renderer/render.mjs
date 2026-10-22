@@ -2,10 +2,10 @@
 // Renders storyboard.json into animated MP4s (16:9, 1:1, 9:16) using headless Chromium + ffmpeg.
 //
 //   node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16]
-//                   [--preview] [--music FILE | --no-music] [--volume 0.5] [--fps 30] [--check]
+//                   [--preview] [--bg white|dark|#hex] [--music FILE | --no-music] [--volume 0.5] [--fps 30] [--check]
 //
 // Without --music, an original track is generated to fit the video (music.mjs); --no-music renders silent.
-//                   [--flow FLOW.md] [--list-icons] [--list-styles]
+//                   [--flow FLOW.md] [--export svg,png] [--list-icons] [--list-styles]
 //
 // When FLOW.md sits next to the storyboard (or --flow is given), every storyboard "ref" is
 // checked against it and every branch in its branch index must be shown or listed in "omitted".
@@ -15,8 +15,9 @@ import { dirname, join, resolve, basename, relative, isAbsolute } from 'node:pat
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadFlow, flowIds, defaultFlowPath } from './flowdoc.mjs';
 import { resolveStyle, listStyles } from './style.mjs';
-import { validateVisual, visualText } from './visuals.mjs';
+import { validateVisual, visualText, visualLengthWarnings } from './visuals.mjs';
 import { generateMusic } from './music.mjs';
+import { exportAssets } from './export-assets.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENGINE = pathToFileURL(join(HERE, 'engine', 'index.html')).href;
@@ -36,6 +37,8 @@ function parseArgs(argv) {
     else if (a === '--check') opts.check = true;
     else if (a === '--music') opts.music = next();
     else if (a === '--no-music') opts.noMusic = true;
+    else if (a === '--bg') opts.bg = next();
+    else if (a === '--export') { const v = argv[i + 1] && !argv[i + 1].startsWith('--') ? next() : 'svg,png'; opts.export = new Set(v.split(',').map((x) => x.trim())); }
     else if (a === '--volume') opts.volume = Number(next());
     else if (a === '--fps') opts.fps = Number(next());
     else if (a === '--flow') opts.flow = next();
@@ -46,6 +49,27 @@ function parseArgs(argv) {
   }
   opts.storyboard = rest[0];
   return opts;
+}
+
+// Every "ref" anywhere inside a visual object.
+export function visualRefs(v) {
+  const out = [];
+  const walk = (x) => {
+    if (Array.isArray(x)) x.forEach(walk);
+    else if (x && typeof x === 'object') for (const [k, y] of Object.entries(x)) { if (k === 'ref') out.push(...[].concat(y)); else walk(y); }
+  };
+  walk(v);
+  return out.filter((r) => typeof r === 'string');
+}
+
+// Coverage numbers for the console: how much of FLOW.md the storyboard shows.
+export function coverage(sb, flow) {
+  const used = new Set([...refHolders(sb).flatMap(([, o]) => asList(o.ref)), ...sb.scenes.flatMap((s) => visualRefs(s.visual))]);
+  const om = new Set((sb.omitted || []).map((o) => o && o.ref));
+  const steps = [...flow.steps.keys()], branches = [...flow.branches.keys()];
+  const shown = (ids) => ids.filter((id) => used.has(id)).length;
+  const left = (ids) => ids.filter((id) => !used.has(id) && (om.has(id) || om.has(id.split('.')[0]))).length;
+  return { steps: steps.length, stepsShown: shown(steps), stepsOmitted: left(steps), branches: branches.length, branchesShown: shown(branches), branchesOmitted: left(branches) };
 }
 
 const asList = (r) => (r === undefined ? [] : Array.isArray(r) ? r : [r]);
@@ -100,7 +124,7 @@ export function validate(sb, flow = null) {
   const revealed = new Set();
   sb.scenes.forEach((s, i) => {
     const at = `scenes[${i}]`;
-    if (!s.caption) errs.push(`${at}: missing "caption"`);
+    if (!s.caption && !['headline', 'showcase'].includes(s.visual?.type)) errs.push(`${at}: missing "caption"`);
     (s.reveal || []).forEach((id) => {
       if (!ids.has(id)) errs.push(`${at}.reveal: unknown node "${id}"`);
       revealed.add(id);
@@ -116,6 +140,8 @@ export function validate(sb, flow = null) {
       else if (!revealed.has(a) || !revealed.has(b)) errs.push(`${at}.flow: ${a} -> ${b} used before both nodes are revealed`);
     });
     if (s.hold !== undefined && !(s.hold >= 0)) errs.push(`${at}.hold must be a number >= 0`);
+    if (s.chapter !== undefined && (typeof s.chapter !== 'string' || !s.chapter.trim())) errs.push(`${at}.chapter must be a short title (the pipeline this scene belongs to)`);
+    if (s.transition !== undefined && !['rise', 'zoom', 'slide', 'fade'].includes(s.transition)) errs.push(`${at}.transition must be rise, zoom, slide or fade`);
     if (s.visual !== undefined) {
       errs.push(...validateVisual(s.visual, `${at}.visual`, ICONS));
       if (s.flow?.length) errs.push(`${at}: a scene with a "visual" cannot also have "flow" (packets run on the map only)`);
@@ -123,6 +149,12 @@ export function validate(sb, flow = null) {
   });
   if (sb.nodes.length && !revealed.size) errs.push('no scene reveals any node');
 
+  if (sb.journey !== undefined && (!sb.journey || typeof sb.journey.item !== 'string')) errs.push('"journey" needs "item": the thing the story follows, e.g. { "item": "Order #1042", "icon": "cart" }');
+  if (sb.journey?.icon && !ICONS[sb.journey.icon]) errs.push(`journey.icon: unknown icon "${sb.journey.icon}"`);
+  if (sb.intro?.highlights !== undefined) {
+    if (!Array.isArray(sb.intro.highlights) || sb.intro.highlights.length > 5) errs.push('intro.highlights: up to 5 items like { "label": "3 agents", "icon": "robot" }');
+    else sb.intro.highlights.forEach((h, i) => { if (!(h && (h.label || typeof h === 'string'))) errs.push(`intro.highlights[${i}] needs "label"`); if (h?.icon && !ICONS[h.icon]) errs.push(`intro.highlights[${i}].icon: unknown icon "${h.icon}"`); });
+  }
   if (sb.omitted !== undefined && !Array.isArray(sb.omitted)) errs.push('"omitted" must be an array of { "ref", "reason" }');
   const omitted = Array.isArray(sb.omitted) ? sb.omitted : [];
   omitted.forEach((o, i) => {
@@ -138,8 +170,21 @@ export function validate(sb, flow = null) {
         used.add(id);
       });
     }
-    omitted.forEach((o, i) => { if (o && o.ref && !known.has(o.ref)) errs.push(`omitted[${i}]: ref "${o.ref}" is not in FLOW.md`); });
+    // Refs inside visuals (an agent step, a pipeline stage, a check, an outcome) count too.
+    sb.scenes.forEach((s, i) => visualRefs(s.visual).forEach((id) => {
+      if (!known.has(id)) errs.push(`scenes[${i}].visual: ref "${id}" is not a step or branch id in FLOW.md`);
+      used.add(id);
+    }));
+    // Every step must be shown somewhere or deliberately left out: big projects get chapters, not shortcuts.
     const omittedIds = new Set(omitted.map((o) => o && o.ref));
+    const covered = (id) => used.has(id) || omittedIds.has(id) || omittedIds.has(id.split('.')[0]);
+    const missing = [...flow.steps.keys()].filter((id) => !covered(id));
+    if (missing.length) {
+      errs.push(`${missing.length} of ${flow.steps.size} FLOW.md steps are not shown in any scene and not in "omitted": ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? ', …' : ''}. ` +
+        'Add "ref" on the scene or visual element that shows each step (a pipeline stage, agent step, check or outcome can carry its own ref), add scenes or chapters, or list it in "omitted" with a reason.');
+    }
+    omitted.forEach((o, i) => { if (o && /^P\d+$/.test(o.ref || '') && ![...flow.steps.keys()].some((k) => k.startsWith(o.ref + '.'))) errs.push(`omitted[${i}]: no steps in FLOW.md start with ${o.ref}.`); });
+    omitted.forEach((o, i) => { if (o && o.ref && !known.has(o.ref) && !/^P\d+$/.test(o.ref)) errs.push(`omitted[${i}]: ref "${o.ref}" is not in FLOW.md`); });
     for (const id of flow.branches.keys()) {
       if (!used.has(id) && !omittedIds.has(id)) errs.push(`branch ${id} from FLOW.md is neither shown (no "ref": "${id}") nor listed in "omitted"`);
     }
@@ -183,7 +228,7 @@ function accuracyWarnings(sb, flow) {
   const hasRef = (o) => asList(o.ref).length > 0;
   const texts = [['subtitle', sb, sb.subtitle], ['outro', sb.outro || {}, sb.outro && `${sb.outro.caption || ''} ${sb.outro.cta || ''}`]];
   sb.nodes.forEach((n) => texts.push([`node "${n.id}"`, n, `${n.label} ${n.sub || ''}`]));
-  sb.scenes.forEach((s, i) => texts.push([`scene ${i + 1}`, s, `${s.title || ''} ${s.caption} ${visualText(s.visual)}`]));
+  sb.scenes.forEach((s, i) => texts.push([`scene ${i + 1}`, s, `${s.title || ''} ${s.caption || ''} ${visualText(s.visual)}`]));
   for (const [name, obj, text] of texts) {
     const claim = claimIn(text);
     if (claim && !hasRef(obj)) w.push(`${name}: "${claim}" is a speed/security/absolute claim; keep it only if FLOW.md cites code for it (add "ref"), otherwise remove it`);
@@ -202,7 +247,7 @@ function accuracyWarnings(sb, flow) {
 }
 
 export function softWarnings(sb, flow = null) {
-  const w = [...structureWarnings(sb), ...accuracyWarnings(sb, flow)];
+  const w = [...structureWarnings(sb), ...accuracyWarnings(sb, flow), ...sb.scenes.flatMap((s, i) => visualLengthWarnings(s.visual, `scene ${i + 1}`))];
   const revealed = new Set(sb.scenes.flatMap((s) => s.reveal || []));
   sb.nodes.forEach((n) => { if (!revealed.has(n.id)) w.push(`node "${n.id}" is never revealed in a scene; it only appears in the outro`); });
   sb.scenes.forEach((s, i) => {
@@ -210,8 +255,9 @@ export function softWarnings(sb, flow = null) {
     if (words > 35) w.push(`scene ${i + 1}: caption is ${words} words; aim for <= 30 so viewers can read it`);
     if ((s.reveal || []).length > 5) w.push(`scene ${i + 1}: reveals ${s.reveal.length} nodes at once; aim for <= 4`);
   });
-  const titled = sb.scenes.filter((s) => s.title).length;
-  if (titled && titled < sb.scenes.length) w.push(`${titled} of ${sb.scenes.length} scenes have a "title"; give every scene a title or none, so kickers read consistently`);
+  const stepScenes = sb.scenes.filter((s) => s.visual?.type !== 'headline' && s.caption);
+  const titled = stepScenes.filter((s) => s.title).length;
+  if (titled && titled < stepScenes.length) w.push(`${titled} of ${stepScenes.length} scenes have a "title"; give every scene a title or none, so kickers read consistently`);
   (sb.edges || []).forEach((e) => {
     if (e.label && e.label.split(/\s+/).length > 3) w.push(`edge ${e.from} -> ${e.to}: label "${e.label}" is long; use 1-3 words`);
   });
@@ -244,11 +290,11 @@ export function assetPath(sbDir, p, exts) {
   return { file: f };
 }
 
-function prepareAssets(sb, sbDir) {
-  const r = resolveStyle(sb, sbDir);
+function prepareAssets(sb, sbDir, bg) {
+  const r = resolveStyle(sb, sbDir, bg);
   const images = {}, errors = [...r.errors];
   for (const s of sb.scenes) {
-    if (s.visual?.type !== 'screen' || !s.visual.src) continue;
+    if (!['screen', 'showcase'].includes(s.visual?.type) || !s.visual.src) continue;
     const a = assetPath(sbDir, s.visual.src, /\.(png|jpe?g|webp|gif)$/i);
     if (a.error) { errors.push(`screenshot ${a.error}`); continue; }
     const f = a.file;
@@ -272,7 +318,23 @@ async function openPage(browser, sb, fmt) {
   } catch (e) {
     fail(`[${fmt}] engine error: ${e.message}${errors.length ? '\n' + errors.join('\n') : ''}`);
   }
+  frameGate(info, fmt);
   return { page, info, width, height };
+}
+
+// Frame rule: nothing in a video may be cut by the frame, in any aspect ratio. The engine shrinks
+// scenes that reach past the frame (reported once per format); anything still cut stops the render.
+// Previews still write their frames so the problem can be seen, but exit with an error.
+const gateSeen = new Set();
+let gateSoft = false;
+function frameGate(info, fmt) {
+  if (!gateSeen.has(fmt)) (info.notes || []).forEach((n) => console.log(`FIT [${fmt}] ${n}`));
+  gateSeen.add(fmt);
+  const errs = info.clipErrors || [];
+  if (!errs.length) return;
+  errs.forEach((e) => console.error(`ERROR [${fmt}] ${e}`));
+  const msg = `[${fmt}] ${errs.length} element(s) cut by the frame; shorten the text or use fewer items in those scenes`;
+  if (gateSoft) { console.error(`ERROR ${msg}`); process.exitCode = 1; } else fail(msg);
 }
 
 const fmtTime = (s) => { const r = Math.round(s); return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`; };
@@ -283,6 +345,7 @@ async function preview(browser, sb, fmt, outDir) {
   mkdirSync(dir, { recursive: true });
   const shots = [['00-intro', 2.0]];
   info.marks.forEach((m, i) => shots.push([`${String(i + 1).padStart(2, '0')}-scene`, m.end - 0.6]));
+  (info.chapters || []).forEach((c, i) => shots.push([`${String(info.marks.findIndex((m) => m.start >= c.end) + 1).padStart(2, '0')}-chapter${i + 1}`, (c.start + c.end) / 2]));
   shots.push(['98-outro', info.endStart - 0.3], ['99-end', info.duration - 0.2]);
   const files = [];
   for (const [name, t] of shots) {
@@ -339,7 +402,7 @@ async function main() {
   if (opts.listIcons) { console.log(Object.keys(ICONS).join('\n')); return; }
   if (opts.listStyles) { console.log(listStyles().join('\n')); return; }
   if (opts.help || !opts.storyboard) {
-    console.log('Usage: node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16] [--preview] [--check] [--music FILE | --no-music] [--volume 0.5] [--fps 30] [--flow FLOW.md] [--list-icons] [--list-styles]');
+    console.log('Usage: node render.mjs <storyboard.json> [--out DIR] [--formats 16x9,1x1,9x16] [--preview] [--check] [--bg white|dark|#hex] [--music FILE | --no-music] [--volume 0.5] [--fps 30] [--flow FLOW.md] [--export svg,png] [--list-icons] [--list-styles]');
     process.exit(opts.help ? 0 : 1);
   }
   const sbPath = resolve(opts.storyboard);
@@ -354,6 +417,11 @@ async function main() {
 
   const errs = validate(sb, flow);
   if (errs.length) fail(`Storyboard has ${errs.length} problem(s):\n- ${errs.join('\n- ')}`);
+  if (flow) {
+    const c = coverage(sb, flow);
+    console.log(`Coverage: steps ${c.stepsShown}/${c.steps} shown, ${c.stepsOmitted} omitted; branches ${c.branchesShown}/${c.branches} shown, ${c.branchesOmitted} omitted`);
+    if (c.steps && c.stepsOmitted / c.steps > 0.25) console.log(`WARN ${c.stepsOmitted} of ${c.steps} steps are left out; for a large project use chapters (one per pipeline) or one storyboard per pipeline instead of trimming`);
+  }
   const bad = opts.formats.filter((f) => !FORMATS[f]);
   if (bad.length) fail(`unknown format(s): ${bad.join(', ')} (use ${Object.keys(FORMATS).join(', ')})`);
   if (opts.music && !(existsSync(opts.music) && statSync(opts.music).isFile())) fail(`music file not found: ${opts.music}`);
@@ -363,17 +431,28 @@ async function main() {
 
   const outDir = resolve(opts.out || dirname(sbPath));
   mkdirSync(outDir, { recursive: true });
-  const assets = prepareAssets(sb, dirname(sbPath));
+  const assets = prepareAssets(sb, dirname(sbPath), opts.bg);
   if (assets.errors.length) fail(`Storyboard has ${assets.errors.length} problem(s):\n- ${assets.errors.join('\n- ')}`);
   Object.defineProperty(sb, '__assets', { value: assets, enumerable: false });
   assets.warnings.forEach((w) => console.log(`WARN ${w}`));
-  console.log(`Style: ${assets.style.preset}`);
+  console.log(`Style: ${assets.style.preset}, ${assets.style.theme} background ${assets.style.colors.bg}`);
   softWarnings(sb, flow).forEach((w) => console.log(`WARN ${w}`));
 
   const chromium = await loadPlaywright();
   const browser = await chromium.launch();
   try {
+    if (opts.export) {
+      const kinds = { svg: opts.export.has('svg'), png: opts.export.has('png') };
+      if (!kinds.svg && !kinds.png) fail('--export takes svg, png or svg,png');
+      for (const fmt of opts.formats) {
+        const { page, info } = await openPage(browser, sb, fmt);
+        const r = await exportAssets(page, info, fmt, outDir, kinds);
+        await page.close();
+        console.log(`[${fmt}] exported ${r.elements} element(s) from ${r.scenes} scene(s) to ${r.dir}`);
+      }
+    }
     if (opts.check || opts.preview) {
+      gateSoft = true;
       for (const fmt of opts.formats) {
         if (opts.check) {
           const { page, info } = await openPage(browser, sb, fmt);
@@ -416,6 +495,6 @@ async function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((e) => fail(e.stack || String(e)));
 }

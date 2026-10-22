@@ -11,7 +11,7 @@
       "description": "Reads a codebase with a code graph, verifies every claim, and renders an animated explainer that shows the product working, in your brand style, with original music (16:9, 1:1, 9:16).",
       "source": "./",
       "category": "productivity",
-      "version": "2.0.1"
+      "version": "2.1.0"
     }
   ]
 }

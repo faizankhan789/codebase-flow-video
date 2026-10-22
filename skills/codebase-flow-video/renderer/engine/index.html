@@ -8,11 +8,14 @@
   #stage { position: relative; overflow: hidden; }
   #stage > svg { position: absolute; inset: 0; display: block; }
   .overlay { position: absolute; pointer-events: none; }
-  #header { left: 4%; top: 3.2%; font-weight: 600; letter-spacing: .02em; display: flex; align-items: center; gap: .6em; }
+  #header { left: 4%; top: 3.2%; font-weight: 600; letter-spacing: .02em; display: flex; align-items: center; gap: .6em; max-width: 46%; box-sizing: border-box; }
+  #header span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #journey { right: 4%; top: 3.2%; font-weight: 600; display: flex; align-items: center; gap: .5em; max-width: 46%; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
+  #journey b { overflow: hidden; text-overflow: ellipsis; }
   #header .dot { width: .55em; height: .55em; border-radius: 50%; }
   #captionBox { left: 5%; right: 5%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
   #captionPanel { padding: .7em 1.1em; border-radius: .6em; max-width: 100%; box-sizing: border-box; }
-  #kicker { font-weight: 700; letter-spacing: .14em; text-transform: uppercase; margin-bottom: .45em; }
+  #kicker { font-weight: 750; letter-spacing: -.01em; margin-bottom: .3em; }
   #caption { font-weight: 600; line-height: 1.28; }
   #progress { left: 0; bottom: 0; height: 6px; }
   .card { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 8%; box-sizing: border-box; }

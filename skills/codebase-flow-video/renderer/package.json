@@ -1,6 +1,6 @@
 {
   "name": "codebase-flow-video-renderer",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "description": "Code graph, FLOW.md verifier and renderer that turns a storyboard.json into animated MP4 videos (16:9, 1:1, 9:16).",

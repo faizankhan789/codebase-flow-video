@@ -93,4 +93,4 @@ async function main() {
   print(out, opts.full && cmd === 'show' ? Infinity : opts.limit);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((e) => { console.error(e.stack || String(e)); process.exit(1); });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((e) => { console.error(e.stack || String(e)); process.exit(1); });

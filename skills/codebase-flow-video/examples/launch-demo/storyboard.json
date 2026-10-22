@@ -1,0 +1,223 @@
+{
+  "title": "NeuraDesk",
+  "subtitle": "One workspace where AI agents answer, act and report",
+  "style": {
+    "preset": "launch"
+  },
+  "journey": {
+    "item": "Ticket #88",
+    "icon": "message"
+  },
+  "intro": {
+    "highlights": [
+      {
+        "label": "AI agents",
+        "icon": "robot"
+      },
+      {
+        "label": "Sourced answers",
+        "icon": "file"
+      },
+      {
+        "label": "Live dashboard",
+        "icon": "chart"
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "chapter": "Meet the workspace",
+      "visual": {
+        "type": "headline",
+        "text": "Smart control",
+        "sub": "One dashboard for every agent"
+      }
+    },
+    {
+      "chapter": "Meet the workspace",
+      "title": "Everything in one place",
+      "visual": {
+        "type": "showcase",
+        "ui": {
+          "app": "NeuraDesk",
+          "nav": [
+            {
+              "label": "Dashboard",
+              "icon": "chart"
+            },
+            {
+              "label": "Tickets",
+              "icon": "message"
+            },
+            {
+              "label": "Agents",
+              "icon": "robot"
+            },
+            {
+              "label": "Knowledge",
+              "icon": "file"
+            },
+            {
+              "label": "Settings",
+              "icon": "gear"
+            }
+          ],
+          "greeting": "Hello, Mark",
+          "headline": "How can I help you today?",
+          "actions": [
+            "Ask AI",
+            "New ticket",
+            "Reports"
+          ],
+          "widgets": [
+            {
+              "type": "stat",
+              "title": "Open tickets",
+              "value": "24",
+              "sub": "6 need a person"
+            },
+            {
+              "type": "ring",
+              "title": "Resolved by AI",
+              "value": 82
+            },
+            {
+              "type": "list",
+              "title": "Today",
+              "items": [
+                "Refund for #1042",
+                "Password reset",
+                "Invoice copy"
+              ]
+            },
+            {
+              "type": "chart",
+              "title": "This week",
+              "items": [
+                4,
+                6,
+                5,
+                8,
+                7,
+                9
+              ]
+            },
+            {
+              "type": "chat",
+              "title": "Ask",
+              "value": "Summarise ticket #88"
+            }
+          ]
+        },
+        "callouts": [
+          {
+            "title": "Live status",
+            "text": "Every agent's work, as it happens",
+            "icon": "bolt"
+          },
+          {
+            "title": "Hand-offs",
+            "text": "Flags what needs a person",
+            "icon": "users"
+          },
+          {
+            "title": "Sources",
+            "text": "Answers cite your documents",
+            "icon": "file"
+          }
+        ]
+      }
+    },
+    {
+      "chapter": "Answering customers",
+      "visual": {
+        "type": "headline",
+        "variant": "orb",
+        "text": "New answers",
+        "sub": "Grounded in your documents"
+      }
+    },
+    {
+      "chapter": "Answering customers",
+      "title": "A team of agents",
+      "caption": "One agent plans, one looks things up, one writes the reply.",
+      "visual": {
+        "type": "agents",
+        "agents": [
+          {
+            "id": "p",
+            "name": "Planner"
+          },
+          {
+            "id": "r",
+            "name": "Researcher",
+            "icon": "search"
+          },
+          {
+            "id": "w",
+            "name": "Writer",
+            "icon": "message"
+          }
+        ],
+        "tools": [
+          {
+            "id": "kb",
+            "name": "Knowledge base",
+            "icon": "file"
+          }
+        ],
+        "steps": [
+          {
+            "from": "p",
+            "to": "r",
+            "type": "handoff",
+            "text": "Check order #1042"
+          },
+          {
+            "from": "r",
+            "to": "kb",
+            "type": "tool",
+            "text": "Find refund rules"
+          },
+          {
+            "from": "r",
+            "to": "w",
+            "type": "result",
+            "text": "Refund allowed"
+          }
+        ]
+      }
+    },
+    {
+      "chapter": "Answering customers",
+      "title": "Checked before it is sent",
+      "caption": "Every reply is checked against the order and the policy first.",
+      "visual": {
+        "type": "checklist",
+        "title": "Before sending",
+        "items": [
+          {
+            "label": "Facts match the order",
+            "ok": true
+          },
+          {
+            "label": "Within policy",
+            "ok": true
+          },
+          {
+            "label": "No personal data",
+            "ok": true
+          }
+        ],
+        "result": {
+          "label": "Approved",
+          "ok": true
+        }
+      }
+    }
+  ],
+  "outro": {
+    "caption": "Answers, actions and reports in one place.",
+    "cta": "Fictional demo product \u00b7 made with codebase-flow-video"
+  }
+}

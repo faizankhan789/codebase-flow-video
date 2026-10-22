@@ -4,6 +4,26 @@
   "style": {
     "preset": "neural"
   },
+  "journey": {
+    "item": "Ticket #88",
+    "icon": "message"
+  },
+  "intro": {
+    "highlights": [
+      {
+        "label": "3 agents",
+        "icon": "robot"
+      },
+      {
+        "label": "Sourced answers",
+        "icon": "file"
+      },
+      {
+        "label": "Safety checks",
+        "icon": "shield"
+      }
+    ]
+  },
   "scenes": [
     {
       "title": "A customer asks",
@@ -29,7 +49,8 @@
             ]
           }
         ]
-      }
+      },
+      "chapter": "Answering the customer"
     },
     {
       "title": "A team of agents",
@@ -103,7 +124,8 @@
             "text": "Draft a clear reply"
           }
         ]
-      }
+      },
+      "chapter": "Answering the customer"
     },
     {
       "title": "Safety checks",
@@ -134,7 +156,8 @@
           "label": "Approved to send",
           "ok": true
         }
-      }
+      },
+      "chapter": "Answering the customer"
     },
     {
       "title": "Refund decision",
@@ -157,7 +180,8 @@
             "tone": "warn"
           }
         ]
-      }
+      },
+      "chapter": "Refunding the charge"
     },
     {
       "title": "The refund request",
@@ -195,7 +219,8 @@
           "label": "Refund confirmed",
           "ok": true
         }
-      }
+      },
+      "chapter": "Refunding the charge"
     },
     {
       "title": "What the ticket becomes",
@@ -249,7 +274,8 @@
           "label": "Closed",
           "icon": "check"
         }
-      }
+      },
+      "chapter": "Closing the loop"
     },
     {
       "title": "Follow-up emails",
@@ -266,7 +292,8 @@
         "workers": 2,
         "retry": true,
         "done": "Sent"
-      }
+      },
+      "chapter": "Closing the loop"
     },
     {
       "title": "The rule in the code",
@@ -288,7 +315,8 @@
           "}"
         ],
         "note": "One setting controls the limit"
-      }
+      },
+      "chapter": "Closing the loop"
     }
   ],
   "outro": {

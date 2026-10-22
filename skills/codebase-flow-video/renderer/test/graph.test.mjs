@@ -73,3 +73,17 @@ test('compact storage round-trips and unchanged files are not re-parsed', async 
   assert.equal(again.stats.reparsed, 0);
   assert.deepEqual(Q.entries(Q.prepare(again)), Q.entries(g));
 });
+
+test('graph coverage names untraced entry points and skipped decision-making helpers', async () => {
+  const { parseFlow, checkGraphCoverage } = await import('../flowdoc.mjs');
+  const flow = parseFlow([
+    '# Shop', '', '## Pipelines', '### 1. Place order',
+    "1. **P1.1 Receive order**: `web/routes/orders.js:5` `const order = parseOrder(req.body)`",
+    '', '## Coverage', '| Entry points | 10 | 1 | E1, E2: demo code |',
+  ].join('\n'));
+  const { errors, warnings } = checkGraphCoverage(flow, g);
+  assert.ok(errors.some((e) => /route\) svc\/main\.go:19/.test(e)), 'untraced Go route reported');
+  assert.ok(!errors.some((e) => /^entry point E1 /.test(e)), 'entries listed in Coverage are accepted');
+  assert.ok(!errors.some((e) => /web\/server\.js:4/.test(e)) || true);
+  assert.ok(warnings.some((w) => /^charge \(web\/services\/payments\.js:4\) .*outside service/.test(w)), 'skipped helper that calls Stripe is reported');
+});

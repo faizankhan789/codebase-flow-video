@@ -48,11 +48,26 @@ Full working examples in this skill: `examples/helpdesk-agents/storyboard.json` 
 }
 ```
 
+### Story-level fields
+
+| Field | Notes |
+|---|---|
+| `journey` | `{ "item": "Order #1042", "icon": "cart" }`: the one thing the story follows; shown top right with "step N of M" |
+| `intro.highlights` | up to 5 `{ "label": "3 agents", "icon": "robot" }` chips on the title card: what makes this system special, from `FLOW.md` |
+| `scenes[].chapter` | the pipeline the scene belongs to; with 2+ chapters each gets a title card and a marker on the progress bar. Use one chapter per pipeline on any project with several |
+| `scenes[].chapterSub` | optional one-line description on the chapter card |
+| `scenes[].transition` | `rise`, `zoom`, `slide` or `fade`; default varies scene to scene with the style's pace |
+| `omitted` | `{ "ref": "P3.4", "reason": "…" }` for a step or branch left out, or `{ "ref": "P3", "reason": "…" }` for a whole pipeline not in this video |
+
+**Coverage is enforced.** When `FLOW.md` sits next to the storyboard, every step (`P…`) and branch (`B…`) must be referenced somewhere or listed in `omitted`. Refs can sit on a scene, a node, an edge, or inside a visual on the element that shows the step: an agent `steps[]` entry, a pipeline `stages[]` entry, a checklist `items[]` entry, a decision `options[]` entry, a request `checks[]` entry. One pipeline visual with six stages can cover six steps. If more than a quarter of the steps are omitted the renderer warns: split into chapters or one storyboard per pipeline instead.
+
 ### Style
 
 | Field | Notes |
 |---|---|
-| `preset` | `midnight` (default), `daylight`, `neural`, `ledger`, `storefront`, `clinic`, `terminal`, `boardroom`, `ocean`, `candy` (`render.mjs --list-styles`) |
+| `preset` | `midnight` (default), `launch`, `daylight`, `neural`, `ledger`, `storefront`, `clinic`, `terminal`, `boardroom`, `ocean`, `candy` (`render.mjs --list-styles`) |
+| `bg` | background colour (hex). Default `#FFFFFF` (white) for every preset. Any colour works: text, cards, borders, glows and shadows are derived from it, light or dark decided by which text reads better |
+| `theme` | `dark` uses the preset's own dark palette (the cinematic look); `light` = white. `--bg white\|dark\|#hex` on the command line wins over both |
 | `accent`, `accent2` | brand colours (hex). Low-contrast colours are nudged until readable; the renderer says so |
 | `good`, `bad`, `warn` | outcome colours (hex) |
 | `font` | `{ "family": "Inter" }` (used if installed) or `{ "family": "Inter", "file": "../path/font.woff2" }` (path relative to the storyboard; always used) |

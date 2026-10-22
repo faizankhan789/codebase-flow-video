@@ -30,12 +30,15 @@ const norm = (s) => s.replace(/\s+/g, ' ').trim();
 export function parseFlow(text) {
   const lines = text.split('\n');
   const out = { commit: null, steps: new Map(), branches: new Map(), refs: [], defs: [], mentions: [],
-    duplicates: [], unverified: 0, hasCoverage: false };
+    duplicates: [], unverified: 0, hasCoverage: false, coverageText: '' };
+  let inCoverage = false;
   lines.forEach((line, i) => {
     const ln = i + 1;
     const c = line.match(/^Commit:\s*`?([0-9a-f]{7,40})`?/i);
     if (c && !out.commit) out.commit = c[1];
-    if (/^##\s+Coverage\b/i.test(line)) out.hasCoverage = true;
+    if (/^##\s+Coverage\b/i.test(line)) { out.hasCoverage = true; inCoverage = true; }
+    else if (/^##\s/.test(line)) inCoverage = false;
+    else if (inCoverage) out.coverageText += line + '\n';
     if (UNVERIFIED.test(line)) out.unverified++;
 
     // Collect inline code spans in order; a ref followed directly by another span takes it as its quote.
@@ -64,6 +67,44 @@ export function parseFlow(text) {
     if (!branch) for (const m of line.matchAll(BRANCH_MENTION)) out.mentions.push({ id: m[1], line: ln });
   });
   return out;
+}
+
+// Graph-backed completeness checks (big projects skip things; this makes skipping visible):
+//  - every entry point the code graph found is traced (cited in FLOW.md) or named in ## Coverage;
+//  - functions called from traced code that make decisions or call outside services are cited,
+//    or named in ## Coverage (for example under "trivial helpers").
+export function checkGraphCoverage(flow, g) {
+  const errors = [], warnings = [];
+  const cited = (file, line) => flow.refs.some((r) => r.file === file && line >= r.from - 3 && line <= r.to + 3);
+  const inCoverage = (...keys) => keys.some((k) => k && flow.coverageText.includes(k));
+  for (const e of g.entries) {
+    if (e.line && cited(e.file, e.line)) continue;
+    if (inCoverage(e.id + ' ', e.id + ':', e.id + ',', e.id + ')', `${e.file}:${e.line}`, e.line ? null : e.file, e.file)) continue;
+    errors.push(`entry point ${e.id} (${e.kind}) ${e.file}${e.line ? ':' + e.line : ''} "${e.text.slice(0, 60)}" is not traced in FLOW.md and not listed in ## Coverage; trace it as a pipeline or list it as out of scope with a reason`);
+  }
+  // Definitions whose body contains a cited line are on a traced path.
+  const citedDefs = new Set();
+  g.defs.forEach((d, i) => { if (!d.anon && flow.refs.some((r) => r.file === d.file && r.from <= d.end && r.to >= d.line)) citedDefs.add(i); });
+  const callsOf = new Map();
+  g.calls.forEach((c) => { if (c.from >= 0) { if (!callsOf.has(c.from)) callsOf.set(c.from, []); callsOf.get(c.from).push(c); } });
+  const branchCount = new Map();
+  g.branches.forEach((b) => { if (b.def >= 0) branchCount.set(b.def, (branchCount.get(b.def) || 0) + 1); });
+  const isTest = (f) => /(^|\/)(tests?|__tests__|spec|specs)\/|\.(test|spec)\.\w+$|_test\.go$|(^|\/)test_[^/]+\.py$/.test(f);
+  const missing = new Map();
+  for (const i of citedDefs) {
+    for (const c of callsOf.get(i) || []) {
+      if (c.status !== 'resolved') continue;
+      const t = c.to[0], d = g.defs[t];
+      if (citedDefs.has(t) || isTest(d.file) || missing.has(t)) continue;
+      const decides = branchCount.get(t) || 0;
+      const external = (callsOf.get(t) || []).some((x) => x.status === 'external');
+      if (!decides && !external) continue;
+      if (inCoverage(d.qual, d.name + '(', ` ${d.name} `, ` ${d.name},`, `\`${d.name}\``)) continue;
+      missing.set(t, `${d.qual} (${d.file}:${d.line}) is called from traced code at ${c.file}:${c.line}, has ${decides} decision(s)${external ? ' and calls an outside service' : ''}, and is not in FLOW.md; trace it as a step or name it in ## Coverage as trivial`);
+    }
+  }
+  [...missing.values()].forEach((m) => warnings.push(m));
+  return { errors, warnings };
 }
 
 export const flowIds = (flow) => new Set([...flow.steps.keys(), ...flow.branches.keys()]);

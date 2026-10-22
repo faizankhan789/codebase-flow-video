@@ -1,5 +1,6 @@
 // Validation for scene "visual" objects (the animated scene types drawn by engine/scenes.js).
-export const VISUAL_TYPES = ['agents', 'chat', 'request', 'pipeline', 'decision', 'checklist', 'queue', 'screen', 'code'];
+export const VISUAL_TYPES = ['agents', 'chat', 'request', 'pipeline', 'decision', 'checklist', 'queue', 'screen', 'code', 'headline', 'showcase'];
+const WIDGETS = ['stat', 'ring', 'list', 'chart', 'chat'];
 const STEP_TYPES = ['message', 'handoff', 'tool', 'result', 'think'];
 const EFFECTS = ['add', 'change', 'remove', 'check', 'filter', 'none'];
 
@@ -20,7 +21,7 @@ export function validateVisual(v, at, icons) {
       const tools = new Set();
       (v.tools || []).forEach((t, i) => { if (!t.id || !t.name) e.push(`${at}.tools[${i}]: needs "id" and "name"`); tools.add(t.id); icon(t.icon, `tools[${i}].icon`); });
       if ((v.tools || []).length > 4) e.push(`${at}.tools: at most 4 tools per scene`);
-      if (!arr(v.steps)) e.push(`${at}.steps: list what happens, e.g. [{ "from": "planner", "to": "researcher", "type": "message", "text": "Find refund rules" }]`);
+      if (v.steps !== undefined && !Array.isArray(v.steps)) e.push(`${at}.steps must be a list (leave it out for a cast-only scene that introduces the agents)`);
       (v.steps || []).forEach((s, i) => {
         if (!ids.has(s.from)) e.push(`${at}.steps[${i}].from: "${s.from}" is not an agent`);
         if (s.type && !STEP_TYPES.includes(s.type)) e.push(`${at}.steps[${i}].type: use ${STEP_TYPES.join(', ')}`);
@@ -80,6 +81,25 @@ export function validateVisual(v, at, icons) {
         if (![h.x, h.y, h.w, h.h].every((n) => typeof n === 'number' && n >= 0 && n <= 1)) e.push(`${at}.highlights[${i}]: x, y, w, h are fractions of the screenshot (0-1)`);
       });
       break;
+    case 'headline':
+      if (!v.text) e.push(`${at}.text: the headline, 2-6 words, e.g. "Smart control"`);
+      if (v.variant !== undefined && !['lines', 'orb'].includes(v.variant)) e.push(`${at}.variant must be lines or orb`);
+      icon(v.icon, 'icon');
+      break;
+    case 'showcase':
+      if (!v.src && !v.ui) e.push(`${at}: needs "src" (a captured screenshot) or "ui" (a dashboard built from the product's real screens and data)`);
+      if (v.ui) {
+        if (v.ui.widgets !== undefined && !Array.isArray(v.ui.widgets)) e.push(`${at}.ui.widgets must be a list`);
+        (v.ui.widgets || []).forEach((w, i) => { if (w.type && !WIDGETS.includes(w.type)) e.push(`${at}.ui.widgets[${i}].type: use ${WIDGETS.join(', ')}`); });
+        (v.ui.nav || []).forEach((n, i) => icon(n && n.icon, `ui.nav[${i}].icon`));
+      }
+      (v.callouts || []).forEach((c, i) => {
+        if (!c.title && !c.text) e.push(`${at}.callouts[${i}] needs "title" (and optional "text")`);
+        if (c.side !== undefined && !['left', 'right', 'top', 'bottom'].includes(c.side)) e.push(`${at}.callouts[${i}].side: left, right, top or bottom`);
+        icon(c.icon, `callouts[${i}].icon`);
+      });
+      if ((v.callouts || []).length > 4) e.push(`${at}.callouts: at most 4`);
+      break;
     case 'code':
       if (!arr(v.lines)) e.push(`${at}.lines: the exact code lines, copied from the repo`);
       if ((v.lines || []).length > 16) e.push(`${at}.lines: at most 16 lines; show the part that matters`);
@@ -87,6 +107,32 @@ export function validateVisual(v, at, icons) {
       break;
   }
   return e;
+}
+
+// Text that is too long for its slot is the main cause of crowded, overlapping scenes.
+const LIMITS = {
+  agents: [['agents', 'name', 2], ['agents', 'role', 5], ['tools', 'name', 3], ['steps', 'text', 6]],
+  chat: [['messages', 'text', 30]],
+  request: [['checks', 'label', 6]],
+  pipeline: [['stages', 'label', 4]],
+  decision: [['options', 'label', 3], ['options', 'outcome', 4]],
+  checklist: [['items', 'label', 7]],
+  queue: [['jobs', null, 3]],
+  screen: [['highlights', 'label', 4]],
+  showcase: [['callouts', 'title', 4], ['callouts', 'text', 10]],
+};
+export function visualLengthWarnings(v, where) {
+  const out = [];
+  const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean).length;
+  for (const [list, key, max] of LIMITS[v?.type] || []) {
+    (v[list] || []).forEach((item, i) => {
+      const text = key ? item?.[key] : item;
+      if (text && words(text) > max) out.push(`${where}: ${list}[${i}]${key ? '.' + key : ''} "${String(text).slice(0, 50)}" has ${words(text)} words; keep it to ${max} so it fits without overlapping`);
+    });
+  }
+  if (v?.type === 'decision' && v.question && words(v.question) > 9) out.push(`${where}: question has ${words(v.question)} words; keep it under 9`);
+  if (v?.type === 'headline' && v.text && words(v.text) > 6) out.push(`${where}: headline has ${words(v.text)} words; keep it to 6 so it reads at a glance`);
+  return out;
 }
 
 // All viewer-facing text in a visual, for the claim checker.

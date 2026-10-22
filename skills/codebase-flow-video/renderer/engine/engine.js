@@ -43,10 +43,10 @@
 
   // Timing (seconds).
   const T0 = {
-    intro: 4.2, cam: 1.1, nodeStart: 0.55, nodeGap: 0.22, nodeDur: 0.6,
+    intro: 4.2, cam: 1.1, nodeStart: 0.55, nodeGap: 0.16, nodeDur: 0.6,
     edgeLead: 0.2, edgeDur: 0.7, packetGap: 0.75, packetDur: 1.4,
     capIn: 0.45, capFade: 0.4, tail: 1.0, minRead: 2.6, wordsPerSec: 3.2,
-    activeFade: 0.5, outroCam: 1.6, outroHold: 5.0, endCard: 3.8,
+    activeFade: 0.5, outroCam: 1.6, outroHold: 5.0, endCard: 3.8, chapter: 2.4,
   };
   let T = { ...T0 };
   const MOTION = { calm: 1.15, standard: 1, snappy: 0.85 };
@@ -58,9 +58,43 @@
   const prog = (t, start, dur) => clamp01((t - start) / dur);
   const lerp = (a, b, p) => a + (b - a) * p;
   const ease = {
-    outCubic: (p) => 1 - Math.pow(1 - p, 3),
-    inOutCubic: (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2),
-    outBack: (p) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); },
+    // Strong custom curves from the shared motion system (scenes.js): ease-out for entrances, ease-in-out for travel.
+    outCubic: (p) => window.FlowMotion.EASE.out(p),
+    inOutCubic: (p) => window.FlowMotion.EASE.inOut(p),
+    outBack: (p) => window.FlowMotion.pop(p),
+  };
+  // ---------- colour ----------
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const rgbHex = (c) => '#' + c.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+  function toHsl(hex) {
+    const [r, g, b] = hexRgb(hex).map((v) => v / 255);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    if (!d) return [0, 0, l];
+    const s = d / (1 - Math.abs(2 * l - 1));
+    const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [(h * 60 + 360) % 360, s, l];
+  }
+  function fromHsl(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return rgbHex([(r + m) * 255, (g + m) * 255, (b + m) * 255]);
+  }
+  const shift = (hex, dh, dl = 0, ds = 0) => { if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex; const [h, s, l] = toHsl(hex); return fromHsl((h + dh + 360) % 360, Math.max(0, Math.min(1, s + ds)), Math.max(0, Math.min(1, l + dl))); };
+  const rgba = (hex, a) => { if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex; const [r, g, b] = hexRgb(hex); return `rgba(${r},${g},${b},${a})`; };
+
+  // Shared paints (gradients) registered once in <defs>; scenes get them through ctx.paint.
+  const paint = {
+    defs: null, cache: new Map(),
+    grad(color) {
+      const key = `g${color.replace('#', '')}`;
+      if (!this.cache.has(key)) {
+        const g = el('linearGradient', { id: key, x1: 0, y1: 0, x2: 1, y2: 1 }, this.defs);
+        el('stop', { offset: '0%', 'stop-color': shift(color, -16, 0.1, 0.05) }, g);
+        el('stop', { offset: '100%', 'stop-color': shift(color, 24, -0.06, 0.05) }, g);
+        this.cache.set(key, `url(#${key})`);
+      }
+      return this.cache.get(key);
+    },
   };
   const wordCount = (s) => (s || '').trim().split(/\s+/).filter(Boolean).length;
 
@@ -80,8 +114,9 @@
 
   // ---------- state ----------
   let W, H, ICONS, theme, accent, orient, base, style, RADIUS = 18, IMAGES = {};
-  let visuals = [], hasMap = true, recap = null;
-  let nodes, nodeById, edges, scenes, packets, warnings;
+  let visuals = [], hasMap = true, recap = null, chapters = [];
+  const TRANSITIONS = { calm: ['rise', 'fade', 'rise', 'zoom'], standard: ['rise', 'zoom', 'slide', 'rise'], snappy: ['slide', 'zoom', 'rise', 'slide'] };
+  let nodes, nodeById, edges, scenes, packets, warnings, notes, clipErrors, capFit;
   let outro, duration, view;
   let dom;
 
@@ -312,14 +347,74 @@
     el('stop', { offset: '0%', 'stop-color': '#fff', 'stop-opacity': 0.9 }, pg);
     el('stop', { offset: '100%', 'stop-color': '#fff', 'stop-opacity': 0 }, pg);
 
-    el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#bgGlow)' }, svg);
+    paint.defs = defs;
+    paint.cache = new Map();
+    const dark = style.theme !== 'light';
+    const sheen = el('linearGradient', { id: 'glassSheen', x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+    el('stop', { offset: '0%', 'stop-color': '#fff', 'stop-opacity': dark ? 0.13 : 0.55 }, sheen);
+    el('stop', { offset: '45%', 'stop-color': '#fff', 'stop-opacity': dark ? 0.03 : 0.15 }, sheen);
+    el('stop', { offset: '100%', 'stop-color': '#fff', 'stop-opacity': 0 }, sheen);
+    const edge = el('linearGradient', { id: 'glassEdge', x1: 0, y1: 0, x2: 0.4, y2: 1 }, defs);
+    el('stop', { offset: '0%', 'stop-color': '#fff', 'stop-opacity': dark ? 0.38 : 0.95 }, edge);
+    el('stop', { offset: '100%', 'stop-color': '#fff', 'stop-opacity': dark ? 0.06 : 0.35 }, edge);
+    const blurF = el('filter', { id: 'blobBlur', x: '-50%', y: '-50%', width: '200%', height: '200%' }, defs);
+    el('feGaussianBlur', { stdDeviation: base * 0.085 }, blurF);
+    el('feColorMatrix', { type: 'saturate', values: 1.35 }, blurF);
+    const glowF = el('filter', { id: 'softGlow', x: '-40%', y: '-40%', width: '180%', height: '180%' }, defs);
+    el('feGaussianBlur', { stdDeviation: 14 }, glowF);
+    const vig = el('radialGradient', { id: 'vignette', cx: '50%', cy: '45%', r: '75%' }, defs);
+    el('stop', { offset: '60%', 'stop-color': theme.bg, 'stop-opacity': 0 }, vig);
+    el('stop', { offset: '100%', 'stop-color': theme.bg, 'stop-opacity': dark ? 0.7 : 0.35 }, vig);
+
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: style.look === 'flat' ? 'url(#bgGlow)' : theme.bg }, svg);
+    // Aurora: large blurred colour fields that drift slowly; cards are translucent, so colour shows through.
+    const blobs = [];
+    if (style.look !== 'flat') {
+      // On light backgrounds the colour stays in the corners as a pale wash, so the frame still reads as its background colour.
+      const gB = el('g', { filter: 'url(#blobBlur)', opacity: dark ? 0.7 : 0.32 }, svg);
+      // Colour fields sit in the corners so the centre (where text lives) stays calm and the colours do not mix to grey.
+      const cols = style.blobs || [accent, style.accent2 || accent, shift(accent, -45, -0.05), shift(style.accent2 || accent, 40, 0.02)];
+      const spots = [[0.04, 0.08, 0.34], [0.97, 0.14, 0.3], [0.9, 0.98, 0.36], [0.06, 0.94, 0.27], [0.55, 0.02, 0.18]];
+      cols.slice(0, 5).forEach((c, i) => {
+        const [bx, by, br] = spots[i];
+        blobs.push({ el: el('circle', { r: br * Math.max(W, H) * (dark ? 1 : 0.72), fill: dark ? c : shift(c, 0, 0.08), 'fill-opacity': i === 4 ? 0.5 : 0.85 }, gB), bx, by, i });
+      });
+      el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#vignette)' }, svg);
+      // Depth: faint orbit rings with a travelling light, and slow drifting particles.
+      const gD = el('g', { opacity: dark ? 1 : 0.8 }, svg);
+      const rings = [[0.92, 0.1, 0.34], [0.06, 0.92, 0.3]].map(([rxp, ryp, rr], i) => {
+        const r = rr * base;
+        el('circle', { cx: W * rxp, cy: H * ryp, r, fill: 'none', stroke: dark ? '#fff' : accent, 'stroke-opacity': dark ? 0.07 : 0.12, 'stroke-width': 1.5 }, gD);
+        el('circle', { cx: W * rxp, cy: H * ryp, r: r * 0.72, fill: 'none', stroke: dark ? '#fff' : accent, 'stroke-opacity': dark ? 0.045 : 0.08, 'stroke-width': 1, 'stroke-dasharray': '3 9' }, gD);
+        const dot = el('circle', { r: base * 0.006, fill: i ? (style.accent2 || accent) : accent, opacity: 0.9 }, gD);
+        return { cx: W * rxp, cy: H * ryp, r, dot, sp: i ? -0.16 : 0.12 };
+      });
+      let seed = 11;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      const particles = Array.from({ length: 42 }, () => ({ x: rnd() * W, y: rnd() * H, r: (0.8 + rnd() * 2.2) * base / 1080, sp: 6 + rnd() * 14, ph: rnd() * 6,
+        el: null, a: 0.12 + rnd() * 0.3 }));
+      particles.forEach((pt) => { pt.el = el('circle', { r: pt.r, fill: dark ? '#fff' : accent, opacity: pt.a }, gD); });
+      // Light lines: thin horizontal streaks with a travelling glint (cinematic launch look).
+      const streaks = style.lines ? [0.16, 0.5, 0.84].map((fy, i) => {
+        const y = H * fy;
+        const lgId = `streak${i}`;
+        const lg = el('linearGradient', { id: lgId, x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
+        el('stop', { offset: '0%', 'stop-color': accent, 'stop-opacity': 0 }, lg);
+        el('stop', { offset: '50%', 'stop-color': style.accent2 || accent, 'stop-opacity': 0.5 }, lg);
+        el('stop', { offset: '100%', 'stop-color': accent, 'stop-opacity': 0 }, lg);
+        el('rect', { x: 0, y: y - 0.75, width: W, height: 1.5, fill: `url(#${lgId})`, opacity: 0.35 }, gD);
+        const glint = el('ellipse', { cy: y, rx: base * 0.08, ry: 2.2, fill: style.accent2 || accent, opacity: 0.9, filter: 'url(#softGlow)' }, gD);
+        return { glint, sp: (i % 2 ? -1 : 1) * W * 0.06, x0: W * (0.2 + 0.3 * i) };
+      }) : [];
+      blobs.decor = { rings, particles, streaks };
+    }
     if (style.background === 'grid') {
       const gp = el('pattern', { id: 'screenGrid', width: base / 18, height: base / 18, patternUnits: 'userSpaceOnUse' }, defs);
       el('path', { d: `M${base / 18} 0 L0 0 0 ${base / 18}`, fill: 'none', stroke: theme.dot, 'stroke-width': 1 }, gp);
     }
     const bgPattern = el('rect', { x: 0, y: 0, width: W, height: H, fill: style.background === 'grid' ? 'url(#screenGrid)' : 'none' }, svg);
     const world = el('g', {}, svg);
-    el('rect', { x: -20000, y: -20000, width: 40000, height: 40000, fill: 'url(#dots)' }, world);
+    el('rect', { x: -20000, y: -20000, width: 40000, height: 40000, fill: 'url(#dots)', opacity: style.look === 'flat' ? 1 : 0.55 }, world);
     const gEdges = el('g', {}, world);
     const gLabels = el('g', {}, world);
     const gNodes = el('g', {}, world);
@@ -338,10 +433,15 @@
         transform: `translate(${end.x},${end.y}) rotate(${ang})`,
       }, gEdges);
       if (e.label) {
-        const mid = e.path.getPointAtLength(e.len * (e.back ? 0.5 : 0.45));
-        const g = el('g', { transform: `translate(${mid.x},${mid.y})` }, gLabels);
         measureCtx.font = `700 18px ${FONT}`;
         const tw = measureCtx.measureText(e.label).width;
+        // Put the label where it does not cover any box: try points along the edge, nearest the middle first.
+        const hitsNode = (p) => nodes.some((n) => Math.abs(p.x - n.x) < NODE_W / 2 + tw / 2 + 18 && Math.abs(p.y - n.y) < n.h / 2 + 24);
+        const tries = e.back ? [0.5, 0.4, 0.6, 0.3, 0.7] : [0.45, 0.35, 0.55, 0.28, 0.62, 0.2, 0.7];
+        let mid = null;
+        for (const f of tries) { const p = e.path.getPointAtLength(e.len * f); if (!hitsNode(p)) { mid = p; break; } }
+        if (!mid) { mid = e.path.getPointAtLength(e.len * tries[0]); warnings.push(`edge ${e.from} -> ${e.to}: label "${e.label}" has no free spot and overlaps a box; shorten it or move the boxes apart`); }
+        const g = el('g', { transform: `translate(${mid.x},${mid.y})` }, gLabels);
         el('rect', {
           x: -tw / 2 - 12, y: -16, width: tw + 24, height: 32, rx: 16,
           fill: theme.pill, stroke: nodeById.get(e.from).color, 'stroke-width': 2,
@@ -351,35 +451,38 @@
           'font-family': FONT, 'font-size': 18, 'font-weight': 700,
         }, g);
         tx.textContent = e.label;
-        e.labelG = g;
+        e.labelG = g; e.mid = mid; e.labelW = tw + 24;
       }
     });
 
     nodes.forEach((n) => {
-      const g = el('g', {}, gNodes);
+      const g = el('g', { 'data-asset': n.label }, gNodes);
       const inner = el('g', { transform: `translate(${-NODE_W / 2},${-n.h / 2})` }, g);
-      el('rect', { x: 0, y: 10, width: NODE_W, height: n.h, rx: RADIUS, fill: theme.shadow }, inner);
+      const flat = style.look === 'flat';
+      if (flat) el('rect', { x: 0, y: 10, width: NODE_W, height: n.h, rx: RADIUS, fill: theme.shadow }, inner);
+      else el('rect', { x: 6, y: 14, width: NODE_W - 12, height: n.h - 6, rx: RADIUS, fill: n.color, opacity: 0.32, filter: 'url(#softGlow)' }, inner);
       n.ring = el('rect', {
         x: -6, y: -6, width: NODE_W + 12, height: n.h + 12, rx: RADIUS + 5,
         fill: 'none', stroke: n.color, 'stroke-width': 3,
       }, inner);
       el('rect', {
-        x: 0, y: 0, width: NODE_W, height: n.h, rx: RADIUS, fill: theme.card,
-        stroke: n.kind === 'decision' ? n.color : theme.border, 'stroke-width': 2,
+        x: 0, y: 0, width: NODE_W, height: n.h, rx: RADIUS, fill: theme.card, 'fill-opacity': flat ? 1 : (style.theme === 'light' ? 0.72 : 0.6),
+        stroke: n.kind === 'decision' ? n.color : flat ? theme.border : 'url(#glassEdge)', 'stroke-width': 2,
         'stroke-dasharray': n.kind === 'external' ? '8 6' : 'none',
       }, inner);
+      if (!flat) el('rect', { x: 1, y: 1, width: NODE_W - 2, height: n.h * 0.6, rx: RADIUS, fill: 'url(#glassSheen)' }, inner);
       const by = n.h / 2 - BADGE / 2;
       if (n.kind === 'decision') {
         el('rect', {
           x: PAD_X + 8, y: by + 8, width: BADGE - 16, height: BADGE - 16, rx: 6,
-          transform: `rotate(45 ${PAD_X + BADGE / 2} ${by + BADGE / 2})`, fill: n.color, 'fill-opacity': 0.18,
+          transform: `rotate(45 ${PAD_X + BADGE / 2} ${by + BADGE / 2})`, fill: flat ? n.color : paint.grad(n.color), 'fill-opacity': flat ? 0.18 : 1,
         }, inner);
       } else {
-        el('rect', { x: PAD_X, y: by, width: BADGE, height: BADGE, rx: 14, fill: n.color, 'fill-opacity': 0.16 }, inner);
+        el('rect', { x: PAD_X, y: by, width: BADGE, height: BADGE, rx: 14, fill: flat ? n.color : paint.grad(n.color), 'fill-opacity': flat ? 0.16 : 1 }, inner);
       }
       const icon = el('g', {
         transform: `translate(${PAD_X + 12},${by + 12}) scale(${(BADGE - 24) / 24})`,
-        fill: 'none', stroke: n.color, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+        fill: 'none', stroke: flat ? n.color : '#FFFFFF', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
       }, inner);
       icon.innerHTML = ICONS[n.icon] || ICONS[KIND_ICONS[n.kind]];
 
@@ -415,7 +518,9 @@
     const header = div('header', stage);
     header.style.fontSize = fs(0.022);
     header.style.color = theme.muted;
-    header.style.background = theme.panel;
+    const glassCss = style.look === 'flat' ? `background:${theme.panel}` :
+      `background:${rgba(theme.card, style.theme === 'light' ? 0.62 : 0.48)};backdrop-filter:blur(${Math.round(base * 0.018)}px) saturate(1.5);-webkit-backdrop-filter:blur(${Math.round(base * 0.018)}px) saturate(1.5);border:1px solid rgba(255,255,255,${style.theme === 'light' ? 0.7 : 0.14});box-shadow:0 ${base * 0.012}px ${base * 0.04}px rgba(0,0,0,${style.theme === 'light' ? 0.10 : 0.35})`;
+    header.style.cssText += glassCss;
     header.style.padding = '.35em .8em';
     header.style.borderRadius = '2em';
     header.innerHTML = `<span class="dot" style="background:${accent}"></span><span></span>`;
@@ -426,41 +531,89 @@
     capBox.style.bottom = `${H * 0.045}px`;
     const panel = document.createElement('div');
     panel.id = 'captionPanel';
-    panel.style.background = theme.panel;
+    panel.style.cssText += glassCss;
     capBox.appendChild(panel);
     const kicker = document.createElement('div');
     kicker.id = 'kicker';
-    kicker.style.fontSize = fs(0.021);
-    kicker.style.color = accent;
+    kicker.style.fontSize = fs(W < H ? 0.034 : 0.027);
+    kicker.style.color = shift(accent, 0, style.theme === 'light' ? -0.12 : 0.16);
     const caption = document.createElement('div');
     caption.id = 'caption';
     caption.style.fontSize = fs(W < H ? 0.05 : 0.041);
     caption.style.color = theme.text;
     panel.append(kicker, caption);
+    capFit = new Map();
 
     const progress = div('progress', stage);
-    progress.style.background = accent;
+    progress.style.background = `linear-gradient(90deg, ${accent}, ${style.accent2 || accent})`;
 
+    const cardBg = style.look === 'flat' ? `radial-gradient(ellipse at 50% 42%, ${theme.glow}, ${theme.bg} 75%)` : 'transparent';
+    const chipIcon = (name, col) => `<i style="background:linear-gradient(135deg, ${shift(col, -16, 0.1)}, ${shift(col, 24, -0.06)})"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ICONS.sparkles}</svg></i>`;
     const introCard = div(null, stage, 'overlay card');
-    introCard.style.background = `radial-gradient(ellipse at 50% 42%, ${theme.glow}, ${theme.bg} 75%)`;
-    introCard.innerHTML = '<h1></h1><div class="rule"></div><p></p>';
+    introCard.style.background = cardBg;
+    introCard.innerHTML = '<div class="glass"><h1></h1><div class="rule"></div><p></p><div class="chips"></div></div>';
     introCard.querySelector('h1').textContent = sb.title;
     introCard.querySelector('p').textContent = sb.subtitle || '';
-    styleCard(introCard, fs);
+    const palette = [accent, style.accent2 || accent, (style.kinds || {}).ai || accent, (style.kinds || {}).store || accent, (style.kinds || {}).decision || accent];
+    ((sb.intro && sb.intro.highlights) || []).slice(0, 5).forEach((h, i) => {
+      const c = document.createElement('span');
+      c.className = 'chip';
+      c.innerHTML = `${chipIcon(h.icon, palette[i % 5])}<span></span>`;
+      c.lastChild.textContent = h.label || h;
+      introCard.querySelector('.chips').appendChild(c);
+    });
+    styleCard(introCard, fs, glassCss);
 
     const endCard = div(null, stage, 'overlay card');
-    endCard.style.background = `radial-gradient(ellipse at 50% 42%, ${theme.glow}, ${theme.bg} 75%)`;
-    endCard.innerHTML = '<h1></h1><div class="rule"></div><p></p>';
+    endCard.style.background = cardBg;
+    const emblem = style.look !== 'flat' && style.emblem === 'sparkle';
+    const sp = window.FlowScenes && window.FlowScenes.sparklePath;
+    endCard.innerHTML = (emblem && sp ? `<svg class="emblem" viewBox="-60 -60 120 120"><defs><linearGradient id="emG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="${style.accent2 || accent}"/></linearGradient><radialGradient id="emH"><stop offset="0" stop-color="${style.accent2 || accent}" stop-opacity=".85"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient></defs><circle r="58" fill="url(#emH)"/><path d="${sp(0, 0, 44)}" fill="url(#emG)"/></svg>` : '') +
+      '<div class="glass"><h1></h1><div class="rule"></div><p></p></div>';
     endCard.querySelector('h1').textContent = sb.title;
     endCard.querySelector('p').textContent = (sb.outro && sb.outro.cta) || sb.subtitle || '';
-    styleCard(endCard, fs);
+    styleCard(endCard, fs, glassCss);
+    const emEl = endCard.querySelector('.emblem');
+    if (emEl) emEl.style.cssText = `width:${fs(W < H ? 0.36 : 0.28)};height:${fs(W < H ? 0.36 : 0.28)};margin-bottom:${fs(-0.05)};filter:drop-shadow(0 0 ${fs(0.03)} ${style.accent2 || accent})`;
 
-    dom = { svg, world, gVisual, gRecap, bgPattern, gPackets, header, capBox, panel, kicker, caption, progress, introCard, endCard, lastCaption: null };
+    // Chapter card: shown before each chapter on videos with several pipelines.
+    const chapterCard = div(null, stage, 'overlay card');
+    chapterCard.style.background = 'transparent';
+    chapterCard.innerHTML = '<div class="glass"><h1></h1><div class="rule"></div><p></p></div>';
+    styleCard(chapterCard, fs, glassCss);
+
+    // Journey chip (top right): the item the story follows and where we are in it.
+    const journey = div('journey', stage);
+    journey.style.cssText += `${glassCss};font-size:${fs(0.02)};color:${theme.muted};padding:.35em .9em .35em .35em;border-radius:2em`;
+    if (sb.journey) {
+      journey.innerHTML = `${chipIcon(sb.journey.icon || 'file', accent)}<b></b><span class="step"></span>`;
+      journey.querySelector('b').textContent = sb.journey.item;
+      journey.querySelector('b').style.color = theme.text;
+      const i = journey.querySelector('i');
+      i.style.cssText += `;display:inline-grid;place-items:center;width:1.7em;height:1.7em;border-radius:50%`;
+      i.querySelector('svg').style.cssText = 'width:58%;height:58%';
+    } else journey.style.display = 'none';
+
+    dom = { capSize: parseFloat(caption.style.fontSize), kickSize: parseFloat(kicker.style.fontSize), chapterCard, journey, blobs, svg, world, gVisual, gRecap, bgPattern, gPackets, header, capBox, panel, kicker, caption, progress, introCard, endCard, lastCaption: null };
   }
-  function styleCard(card, fs) {
-    card.querySelector('h1').style.cssText = `font-size:${fs(W < H ? 0.095 : 0.078)};color:${theme.text}`;
-    card.querySelector('p').style.cssText = `font-size:${fs(W < H ? 0.045 : 0.034)};color:${theme.muted}`;
-    card.querySelector('.rule').style.cssText = `width:${fs(0.12)};background:${accent}`;
+  function styleCard(card, fs, glassCss) {
+    const vivid = style.look !== 'flat';
+    const lt = style.theme === 'light';
+    const h1 = card.querySelector('h1');
+    h1.style.cssText = `font-size:${fs(W < H ? 0.09 : 0.074)};color:${theme.text}` +
+      (vivid ? `;letter-spacing:-.03em;text-shadow:0 ${fs(0.006)} ${fs(0.03)} ${rgba(accent, lt ? 0.18 : 0.45)}` : '');
+    card.querySelector('p').style.cssText = `font-size:${fs(W < H ? 0.042 : 0.031)};color:${theme.muted}`;
+    card.querySelector('.rule').style.cssText = `width:${fs(0.12)};background:linear-gradient(90deg, ${accent}, ${style.accent2 || accent})`;
+    const g = card.querySelector('.glass');
+    g.style.cssText = vivid ? `${glassCss};padding:${fs(0.05)} ${fs(0.06)};border-radius:${fs(0.035)};max-width:86%;box-sizing:border-box` : '';
+    const chips = card.querySelector('.chips');
+    if (chips) chips.style.cssText = `display:flex;flex-wrap:wrap;justify-content:center;gap:${fs(0.014)};margin-top:${fs(0.035)}`;
+    card.querySelectorAll('.chip').forEach((c) => {
+      c.style.cssText = `display:inline-flex;align-items:center;gap:${fs(0.012)};padding:${fs(0.009)} ${fs(0.02)} ${fs(0.009)} ${fs(0.009)};border-radius:999px;font-size:${fs(0.024)};font-weight:650;color:${theme.text};background:rgba(255,255,255,${lt ? 0.6 : 0.07});border:1px solid rgba(255,255,255,${lt ? 0.85 : 0.14})`;
+      const i = c.querySelector('i');
+      i.style.cssText += `;display:inline-grid;place-items:center;width:${fs(0.042)};height:${fs(0.042)};border-radius:50%`;
+      i.querySelector('svg').style.cssText = 'width:58%;height:58%';
+    });
   }
 
   function buildPackets() {
@@ -484,7 +637,17 @@
     const edgeKey = (a, b) => `${a}->${b}`;
     const edgeMap = new Map(edges.map((e) => [edgeKey(e.from, e.to), e]));
 
+    chapters = [];
+    const distinct = new Set(scenes.map((s) => s.chapter).filter(Boolean));
+    let lastChapter = null, visN = 0;
     scenes.forEach((sc, i) => {
+      // A new chapter (pipeline) gets its own title card before its first scene.
+      if (distinct.size > 1 && sc.chapter && sc.chapter !== lastChapter) {
+        chapters.push({ start: t, dur: T.chapter, title: sc.chapter, sub: sc.chapterSub || '', num: chapters.length + 1 });
+        t += T.chapter;
+      }
+      if (sc.chapter) lastChapter = sc.chapter;
+      sc.trans = sc.visual ? (sc.transition || (TRANSITIONS[style.motion] || TRANSITIONS.standard)[visN++ % 4]) : null;
       const S = t;
       if (sc.visual) {
         // Animated scene: no camera move; any nodes it reveals appear on the map silently for the outro.
@@ -573,19 +736,34 @@
     const inner = el('g', {}, g);
     if (!kind) { warnings.push(`scene ${i + 1}: unknown visual type "${sc.visual.type}"`); return { g, dur: 1, draw() {} }; }
     const headerH = H * 0.08;
-    const boxv = { x: W * 0.05, y: headerH + base * 0.01, w: W * 0.9, h: view.capTop - headerH - base * 0.03 };
+    // Without a caption (headline, showcase) the scene uses the full height.
+    const bottom = sc.caption ? view.capTop - base * 0.02 : H - base * 0.07;
+    const boxv = { x: W * 0.05, y: headerH + base * 0.03, w: W * 0.9, h: bottom - headerH - base * 0.03 };
     // Phones: lay the scene out in a narrower virtual box, then scale it up, so text reads larger.
     const k = W < H ? 1.5 : W === H ? 1.15 : 1;
     const vbox = { x: boxv.x + (boxv.w - boxv.w / k) / 2, y: boxv.y + (boxv.h - boxv.h / k) / 2, w: boxv.w / k, h: boxv.h / k };
-    const ctx = { style, U: base / 1080, box: vbox, icons: ICONS, images: IMAGES, measureCtx, motion: MOTION[style.motion] || 1, uid: `v${i}` };
+    let html = null;
+    if (kind.html) {
+      // HTML layer (for real CSS 3D): sits over the SVG, under the captions.
+      html = document.createElement('div');
+      html.className = 'overlay';
+      html.style.cssText += `left:0;top:0;width:${W}px;height:${H}px;display:none`;
+      document.getElementById('stage').insertBefore(html, dom.capBox);
+    }
+    // The frame guard scales this wrapper if anything in the HTML layer would leave the frame.
+    const htmlInner = html ? Object.assign(document.createElement('div'), { style: `position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0` }) : null;
+    if (html) html.appendChild(htmlInner);
+    const ctx = { style, U: base / 1080, box: kind.html ? boxv : vbox, icons: ICONS, images: IMAGES, measureCtx, motion: MOTION[style.motion] || 1, uid: `v${i}`, paint, html: htmlInner };
     const v = kind.build(inner, sc.visual, ctx);
+    const safe = { l: W * 0.025, t: headerH, r: W * 0.975, b: sc.caption ? view.capTop - base * 0.01 : H - base * 0.025 };
+    if (v.noFit) return { g, inner, html, htmlInner, safe, dur: v.dur, draw: v.draw };
     // Fit: measure what the scene draws over its run and scale it to fill the box (up to 1.6x),
     // so the same scene reads well in 16:9, 1:1 and 9:16.
     g.setAttribute('display', 'inline');
     let bb = null;
     if (v.bounds) bb = v.bounds();
     else {
-      for (const f of [0.35, 0.6, 0.8, 1]) {
+      for (const f of [0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 1]) {
         v.draw(v.dur * f);
         const b = inner.getBBox();
         if (!b.width || !b.height) continue;
@@ -599,12 +777,151 @@
       const cx = boxv.x + boxv.w / 2, cy = boxv.y + boxv.h / 2;
       inner.setAttribute('transform', `translate(${cx},${cy}) scale(${s}) translate(${-(bb.x + bb.w / 2)},${-(bb.y + bb.h / 2)})`);
     }
-    return { g, dur: v.dur, draw: v.draw };
+    return { g, inner, safe, dur: v.dur, draw: v.draw };
+  }
+
+  // ---------- frame guard ----------
+  // Hard rule: nothing that carries content (cards, text, avatars, images, screenshots) may be cut by the
+  // frame or slide under the header or caption, in any aspect ratio. Every scene is sampled across its
+  // whole run; if anything crosses its safe area, the scene is scaled and shifted until it fits. Whatever
+  // still crosses the frame after that is reported as an error and the render stops.
+  const stageScale = () => { const r = document.getElementById('stage').getBoundingClientRect(); return { x: r.left, y: r.top, k: r.width / W || 1 }; };
+  const effOpacity = (n) => {
+    let o = 1;
+    for (let e = n; e && e.id !== 'stage'; e = e.parentNode) {
+      if (!e.getAttribute) continue;
+      if (e.getAttribute('display') === 'none' || (e.style && e.style.display === 'none') || e.getAttribute('data-deco') !== null) return 0;
+      const a = e.getAttribute('opacity'); if (a) o *= parseFloat(a);
+      if (e.style && e.style.opacity !== '') o *= parseFloat(e.style.opacity);
+    }
+    return o;
+  };
+  // Content elements under root, with their rectangles in stage pixels.
+  function contentRects(root) {
+    const st = stageScale();
+    const out = [];
+    const svgSel = 'text, image, rect, circle, ellipse, [data-block]';
+    const nodes = root instanceof SVGElement ? [...root.querySelectorAll(svgSel)] : [...root.querySelectorAll('*')].filter((n) =>
+      n.hasAttribute('data-block') || n.tagName === 'IMG' || n.tagName === 'svg' || [...n.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim()));
+    for (const n of nodes) {
+      if (n instanceof SVGElement && n.tagName !== 'text' && n.tagName !== 'image' && !n.hasAttribute('data-block')) {
+        // Shapes count when they are drawn surfaces (cards, avatars), not invisible hit areas or soft glows.
+        const fill = n.getAttribute('fill'), stroke = n.getAttribute('stroke');
+        if ((!fill || fill === 'none' || fill === 'transparent') && (!stroke || stroke === 'none')) continue;
+        if (n.getAttribute('filter')) continue;
+      }
+      const op = effOpacity(n);
+      if (op < 0.35) continue;
+      const r = n.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      out.push({ n, op, l: (r.left - st.x) / st.k, t: (r.top - st.y) / st.k, r: (r.right - st.x) / st.k, b: (r.bottom - st.y) / st.k });
+    }
+    return out;
+  }
+  const describe = (n) => {
+    const tag = n.closest && (n.closest('[data-block]') || n.closest('[data-asset]'));
+    const name = tag ? tag.getAttribute('data-block') || tag.getAttribute('data-asset') : (n.textContent || '').trim().slice(0, 40);
+    return name ? `"${name}"` : `a ${n.tagName.toLowerCase()}`;
+  };
+  function sceneUnion(vis) {
+    let U = null;
+    for (let f = 0.05; f <= 1.0001; f += 0.05) {
+      vis.draw(vis.dur * Math.min(1, f));
+      const rects = contentRects(vis.g).concat(vis.html ? contentRects(vis.html) : []);
+      for (const q of rects) U = U ? { l: Math.min(U.l, q.l), t: Math.min(U.t, q.t), r: Math.max(U.r, q.r), b: Math.max(U.b, q.b) } : { l: q.l, t: q.t, r: q.r, b: q.b };
+    }
+    return U;
+  }
+  function guardFrame() {
+    const M = Math.max(2, base * 0.006);
+    scenes.forEach((s, i) => {
+      const vis = s.vis;
+      if (!vis) return;
+      vis.g.setAttribute('display', 'inline');
+      if (vis.html) vis.html.style.display = 'block';
+      const sf = vis.safe;
+      const U = sceneUnion(vis);
+      if (U && (U.l < sf.l - 1 || U.t < sf.t - 1 || U.r > sf.r + 1 || U.b > sf.b + 1)) {
+        // Scale about the union and move it inside the safe area (centred on the axis that has room).
+        const k = Math.min(1, (sf.r - sf.l) / (U.r - U.l), (sf.b - sf.t) / (U.b - U.t));
+        const w = (U.r - U.l) * k, h = (U.b - U.t) * k;
+        const nx = Math.min(Math.max(U.l, sf.l), sf.r - w), ny = Math.min(Math.max(U.t, sf.t), sf.b - h);
+        const fixL = k < 1 ? sf.l + ((sf.r - sf.l) - w) / 2 : nx, fixT = k < 1 ? sf.t + ((sf.b - sf.t) - h) / 2 : ny;
+        const tx = fixL - U.l * k, ty = fixT - U.t * k;
+        vis.inner.setAttribute('transform', `translate(${tx},${ty}) scale(${k}) ${vis.inner.getAttribute('transform') || ''}`);
+        if (vis.htmlInner) vis.htmlInner.style.transform = `translate(${tx}px,${ty}px) scale(${k}) ${vis.htmlInner.style.transform || ''}`;
+        notes.push(`scene ${i + 1} (${s.visual.type}): content reached past the frame or caption; ${k < 0.995 ? `scaled to ${(k * 100).toFixed(0)}% and ` : ''}moved inside the safe area`);
+      }
+      // Verify: after the fix, nothing may cross the frame itself.
+      const bad = new Map();
+      for (let f = 0.05; f <= 1.0001; f += 0.05) {
+        vis.draw(vis.dur * Math.min(1, f));
+        for (const q of contentRects(vis.g).concat(vis.html ? contentRects(vis.html) : []))
+          if (q.l < M - 1 || q.t < M - 1 || q.r > W - M + 1 || q.b > H - M + 1) bad.set(describe(q.n), true);
+      }
+      bad.forEach((_, name) => clipErrors.push(`scene ${i + 1} (${s.visual.type}): ${name} is cut by the frame`));
+      vis.g.setAttribute('display', 'none');
+      if (vis.html) vis.html.style.display = 'none';
+    });
+  }
+  // Header, captions, intro, chapter cards, recap and end card: sampled over the whole timeline.
+  function checkChrome() {
+    const M = Math.max(2, base * 0.006);
+    const times = [T.intro * 0.6];
+    scenes.forEach((s) => times.push(s.start + s.dur * 0.3, s.start + s.dur * 0.75));
+    chapters.forEach((c) => times.push(c.start + c.dur * 0.5));
+    times.push(outro.start + 1.2, outro.endStart - 0.1, outro.endStart + T.endCard * 0.6);
+    const stage = document.getElementById('stage');
+    const bad = new Set();
+    for (const t of times) {
+      if (!(t >= 0 && t < duration)) continue;
+      window.__seek(t);
+      const roots = [...stage.children].filter((c) => c.tagName !== 'svg' && !scenes.some((s) => s.vis && s.vis.html === c));
+      // Map nodes are kept in frame by the camera edge fade in __seek.
+      for (const root of roots.concat([dom.gRecap])) {
+        for (const q of contentRects(root)) {
+          if (q.l < M - 1 || q.t < M - 1 || q.r > W - M + 1 || q.b > H - M + 1) bad.add(`${describe(q.n)} at ${t.toFixed(1)}s`);
+        }
+      }
+    }
+    [...bad].slice(0, 12).forEach((b) => clipErrors.push(`${b} is cut by the frame`));
+  }
+
+  // Samples every animated scene and reports blocks (cards, avatars, labels) that cover each other.
+  function checkOverlaps() {
+    const opacityOf = (n, stop) => { let o = 1; for (let e = n; e && e !== stop; e = e.parentNode) { if (e.getAttribute && e.getAttribute('display') === 'none') return 0; const a = e.getAttribute && e.getAttribute('opacity'); if (a !== null && a !== undefined && a !== '') o *= parseFloat(a); } return o; };
+    scenes.forEach((s, i) => {
+      if (!s.vis) return;
+      const found = new Set();
+      s.vis.g.setAttribute('display', 'inline');
+      if (s.vis.html) s.vis.html.style.display = 'block';
+      for (const f of [0.55, 0.8, 1]) {
+        s.vis.draw(s.vis.dur * f);
+        const cssOp = (n) => { let o = 1; for (let e = n; e && e !== s.vis.html; e = e.parentElement) o *= parseFloat(e.style.opacity || 1); return o; };
+        const htmlBlocks = s.vis.html ? [...s.vis.html.querySelectorAll('[data-block]')].map((n) => ({ n, r: n.getBoundingClientRect(), op: cssOp(n) })) : [];
+        const blocks = [...s.vis.g.querySelectorAll('[data-block]')].map((n) => ({ n, r: n.getBoundingClientRect(), op: opacityOf(n, s.vis.g) })).concat(htmlBlocks)
+          .filter((b) => b.op > 0.2 && b.r.width > 2 && b.r.height > 2);
+        for (let a = 0; a < blocks.length; a++) for (let b = a + 1; b < blocks.length; b++) {
+          const A = blocks[a], Bk = blocks[b];
+          if (A.n.contains(Bk.n) || Bk.n.contains(A.n)) continue;
+          const ix = Math.min(A.r.right, Bk.r.right) - Math.max(A.r.left, Bk.r.left), iy = Math.min(A.r.bottom, Bk.r.bottom) - Math.max(A.r.top, Bk.r.top);
+          if (ix <= 4 || iy <= 4) continue;
+          const minArea = Math.min(A.r.width * A.r.height, Bk.r.width * Bk.r.height);
+          if ((ix * iy) / minArea > 0.12) found.add(`"${A.n.getAttribute('data-block')}" and "${Bk.n.getAttribute('data-block')}"`);
+        }
+      }
+      s.vis.g.setAttribute('display', 'none');
+      if (s.vis.html) s.vis.html.style.display = 'none';
+      found.forEach((pair) => warnings.push(`scene ${i + 1} (${s.visual.type}): ${pair} overlap; shorten text, use fewer items, or split the scene`));
+    });
   }
 
   function buildRecap() {
     // One row per scene title, appearing in sequence: a summary of the story told.
-    const items = scenes.map((s, i) => s.title || s.caption.split(/[.!?]/)[0]).slice(0, 9);
+    // Headline scenes are section titles, not steps; the recap lists the steps.
+    let items = scenes.filter((s) => s.visual?.type !== 'headline').map((s) => s.title || (s.caption || '').split(/[.!?]/)[0] || s.visual?.callouts?.[0]?.title || '').filter(Boolean);
+    if (!items.length) items = scenes.map((s) => s.visual?.text || '').filter(Boolean);
+    items = items.slice(0, 9);
     const avail = view.capTop - H * 0.1;
     const U = Math.min(base / 1080 * 1.5, avail / (items.length * 64));
     const rowH = 64 * U, w = Math.min(W * 0.84, 900 * U);
@@ -618,7 +935,12 @@
       const num = el('text', { x: x + 34 * U, y: y + rowH / 2 + 6 * U, 'text-anchor': 'middle', fill: accent, 'font-family': FONT, 'font-size': 17 * U, 'font-weight': 800 }, g);
       num.textContent = String(i + 1);
       const tx = el('text', { x: x + 64 * U, y: y + rowH / 2 + 8 * U, fill: theme.text, 'font-family': FONT, 'font-size': 23 * U, 'font-weight': 650 }, g);
-      tx.textContent = txt.length > 60 ? txt.slice(0, 59) + '…' : txt;
+      // Truncate by measured width so a long title never runs past its row or the frame.
+      measureCtx.font = `650 ${23 * U}px ${FONT}`;
+      const maxW = w - 64 * U - 24 * U;
+      let cut = txt;
+      if (measureCtx.measureText(cut).width > maxW) { while (cut.length > 1 && measureCtx.measureText(cut + '…').width > maxW) cut = cut.slice(0, -1); cut = cut.replace(/\s+$/, '') + '…'; }
+      tx.textContent = cut;
       return { g, at: outro.start + 0.3 + i * 0.22 };
     });
   }
@@ -642,7 +964,8 @@
   window.__setup = async (sb, opts) => {
     W = opts.width; H = opts.height; ICONS = opts.icons;
     base = Math.min(W, H);
-    warnings = [];
+    warnings = []; notes = []; clipErrors = [];
+    if (window.FlowMotion) window.FlowMotion.setPersonality((opts.style && opts.style.motion) || 'standard');
     style = opts.style || { colors: THEMES[sb.theme] || THEMES.dark, accent: sb.accent || '#7C5CFF', kinds: KIND_COLORS, font: { family: FONT }, radius: 18, background: 'glow-dots', motion: 'standard' };
     theme = style.colors;
     accent = style.accent;
@@ -686,10 +1009,17 @@
     buildDom(sb);
     schedule(sb);
     buildPackets();
+    chapters.forEach((c) => {
+      const m = div(null, document.getElementById('stage'), 'overlay');
+      m.style.cssText += `left:${(c.start / duration) * 100}%;bottom:0;width:3px;height:${Math.max(6, base * 0.01)}px;background:${theme.text};opacity:.55`;
+    });
+    guardFrame();
+    checkOverlaps();
+    checkChrome();
     window.__seek(0);
 
     const marks = scenes.map((s) => ({ index: s.index, start: s.start, end: s.start + s.dur }));
-    return { duration, marks, intro: T.intro, outroStart: outro.start, endStart: outro.endStart, warnings };
+    return { duration, marks, intro: T.intro, outroStart: outro.start, endStart: outro.endStart, warnings, notes, clipErrors, chapters: chapters.map((c) => ({ start: c.start, end: c.start + c.dur, title: c.title })) };
   };
 
   window.__seek = (t) => {
@@ -698,14 +1028,54 @@
     for (const s of scenes) if (t >= s.start && t < s.start + s.dur) sc = s;
     const inOutro = t >= outro.start;
 
-    // Visual scenes cover the map; the map fades out under them.
+    // Background colour fields, rings and particles drift slowly (pure function of t).
+    if (dom.blobs.decor) {
+      dom.blobs.decor.streaks.forEach((s) => s.glint.setAttribute('cx', ((((s.x0 + t * s.sp) % (W * 1.2)) + W * 1.2) % (W * 1.2) - W * 0.1).toFixed(1)));
+      dom.blobs.decor.rings.forEach((r) => { const a = t * r.sp; r.dot.setAttribute('cx', (r.cx + Math.cos(a) * r.r).toFixed(1)); r.dot.setAttribute('cy', (r.cy + Math.sin(a) * r.r).toFixed(1)); });
+      dom.blobs.decor.particles.forEach((pt) => {
+        const y = ((pt.y - t * pt.sp) % H + H) % H;
+        pt.el.setAttribute('cx', (pt.x + Math.sin(t * 0.4 + pt.ph) * 8).toFixed(1));
+        pt.el.setAttribute('cy', y.toFixed(1));
+      });
+    }
+    dom.blobs.forEach((b) => {
+      const k = b.i * 1.7;
+      b.el.setAttribute('cx', (W * (b.bx + 0.07 * Math.sin(t * 0.11 + k))).toFixed(1));
+      b.el.setAttribute('cy', (H * (b.by + 0.06 * Math.cos(t * 0.09 + k * 1.3))).toFixed(1));
+    });
+    const chap = chapters.find((c) => t >= c.start && t < c.start + c.dur);
+
+    // Visual scenes cover the map; the map fades out under them. Each enters and leaves with its transition.
     let visOp = 0;
     scenes.forEach((s) => {
       if (!s.vis) return;
       const local = t - s.start;
-      const op = t >= s.start - 0.01 && t < s.start + s.dur ? Math.min(prog(local, 0, 0.45), 1 - prog(local, s.dur - 0.45, 0.45)) : 0;
+      const live = t >= s.start - 0.01 && t < s.start + s.dur;
+      // Exit is faster than entry (about 60%), and a short blur bridges the change.
+      const ein = ease.outCubic(prog(local, 0, 0.55)), eout = ease.inOutCubic(prog(local, s.dur - 0.32, 0.32));
+      const op = live ? Math.min(prog(local, 0, 0.42), 1 - prog(local, s.dur - 0.32, 0.32)) : 0;
+      const blur = live ? (1 - ein) * base * 0.006 + eout * base * 0.006 : 0;
+      const blurCss = blur > 0.2 ? `blur(${blur.toFixed(1)}px)` : '';
       s.vis.g.setAttribute('display', op > 0 ? 'inline' : 'none');
-      if (op > 0) { s.vis.g.setAttribute('opacity', op.toFixed(3)); s.vis.draw(Math.max(0, local - 0.15)); }
+      if (s.vis.html) {
+        s.vis.html.style.display = op > 0 ? 'block' : 'none';
+        if (op > 0) {
+          s.vis.html.style.opacity = op.toFixed(3);
+          s.vis.html.style.filter = blurCss;
+          s.vis.html.style.transform = s.trans === 'slide' ? `translateX(${((1 - ein) * 0.07 - eout * 0.05) * W}px)`
+            : s.trans === 'zoom' ? `scale(${0.93 + 0.07 * ein + 0.03 * eout})` : s.trans === 'rise' ? `translateY(${((1 - ein) * 0.045 - eout * 0.03) * base}px)` : '';
+        }
+      }
+      if (op > 0) {
+        s.vis.g.setAttribute('opacity', op.toFixed(3));
+        const cx = W / 2, cy = view.cy;
+        const tf = s.trans === 'slide' ? `translate(${((1 - ein) * 0.07 - eout * 0.05) * W},0)`
+          : s.trans === 'zoom' ? `translate(${cx},${cy}) scale(${0.93 + 0.07 * ein + 0.03 * eout}) translate(${-cx},${-cy})`
+          : s.trans === 'rise' ? `translate(0,${((1 - ein) * 0.045 - eout * 0.03) * base})` : '';
+        s.vis.g.setAttribute('transform', tf);
+        s.vis.g.style.filter = blurCss;
+        s.vis.draw(Math.max(0, local - 0.15));
+      }
       visOp = Math.max(visOp, op);
     });
     // The map is hidden for a visual scene (full strength once the fade-in is done) and before the first map scene.
@@ -716,6 +1086,11 @@
       if (!mapScene && sc && sc.vis) mapOp = Math.min(mapOp, 1 - visOp);
       const firstMap = scenes.find((s) => !s.vis);
       if (!firstMap || t < firstMap.start) mapOp = sc && sc.vis ? 0 : mapOp;
+    }
+    if (chap) mapOp = 0;
+    else {
+      const near = chapters.find((c) => t >= c.start + c.dur && t < c.start + c.dur + 0.5);
+      if (near && sc && !sc.vis) mapOp *= prog(t, near.start + near.dur, 0.5);
     }
     dom.world.setAttribute('opacity', mapOp.toFixed(3));
     if (recap) recap.forEach((r) => { const a = prog(t, r.at, 0.45); r.g.setAttribute('display', a > 0 && t < outro.endStart + 0.6 ? 'inline' : 'none'); r.g.setAttribute('opacity', a.toFixed(3)); r.g.setAttribute('transform', `translate(0,${(1 - ease.outCubic(a)) * base * 0.02})`); });
@@ -756,9 +1131,15 @@
       n.g.setAttribute('display', 'inline');
       const act = activeness(n.id);
       const op = clamp01(a * 1.8) * lerp(DIM, 1, act);
-      const s = (0.6 + 0.4 * ease.outBack(a)) * (1 + 0.06 * (pulses.get(n.id) || 0));
+      const s = (0.94 + 0.06 * ease.outBack(a)) * (1 + 0.06 * (pulses.get(n.id) || 0));
+      // Camera edge fade: a box the camera has only partly in frame fades out instead of showing cut off.
+      const hw = (NODE_W / 2 + 8) * cam.s * s, hh = (n.h / 2 + 8) * cam.s * s;
+      const sx = tx + n.x * cam.s, sy = ty + n.y * cam.s, m = base * 0.012;
+      // over < 0: distance still inside the frame; it fades over the last 3% before touching the edge.
+      const over = Math.max(m - (sx - hw), (sx + hw) - (W - m), m - (sy - hh), (sy + hh) - (H - m));
+      const edgeFade = clamp01(-over / (base * 0.03));
       n.g.setAttribute('transform', `translate(${n.x},${n.y}) scale(${s})`);
-      n.g.setAttribute('opacity', op.toFixed(3));
+      n.g.setAttribute('opacity', (op * edgeFade).toFixed(3));
       n.ring.setAttribute('stroke-opacity', (act * 0.85 * (sc || inOutro ? 1 : 0)).toFixed(3));
     });
 
@@ -775,7 +1156,11 @@
       e.hl.setAttribute('opacity', (act * 0.9).toFixed(3));
       e.arrow.setAttribute('opacity', (clamp01((p - 0.85) / 0.15) * lerp(0.45, 1, act)).toFixed(3));
       e.arrow.setAttribute('fill', act > 0.5 ? nodeById.get(e.from).color : theme.edge);
-      if (e.labelG) e.labelG.setAttribute('opacity', (prog(t, e.drawAt + T.edgeDur * 0.6, 0.3) * lerp(0.4, 1, act)).toFixed(3));
+      if (e.labelG) {
+        const sx = tx + e.mid.x * cam.s, sy = ty + e.mid.y * cam.s, hw = e.labelW / 2 * cam.s, hh = 16 * cam.s, m = base * 0.012;
+        const over = Math.max(m - (sx - hw), (sx + hw) - (W - m), m - (sy - hh), (sy + hh) - (H - m));
+        e.labelG.setAttribute('opacity', (prog(t, e.drawAt + T.edgeDur * 0.6, 0.3) * lerp(0.4, 1, act) * clamp01(-over / (base * 0.03))).toFixed(3));
+      }
     });
 
     packets.forEach((p) => {
@@ -796,8 +1181,8 @@
     // Caption.
     let capText = '', kick = '', capOp = 0;
     if (sc) {
-      capText = sc.caption;
-      kick = sc.title || `Step ${sc.index + 1} of ${scenes.length}`;
+      capText = sc.caption || "";
+      kick = sc.title || '';
       capOp = prog(t, sc.start + T.capIn, 0.35) * (1 - prog(t, sc.start + sc.dur - T.capFade, T.capFade));
     } else if (inOutro && t < outro.endStart && outro.caption) {
       capText = outro.caption;
@@ -809,16 +1194,56 @@
       dom.kicker.textContent = kick;
       dom.caption.textContent = capText;
       dom.lastCaption = key;
+      // Long captions shrink until the panel fits its box, so no line is ever cut by the frame.
+      dom.kicker.style.display = kick ? 'block' : 'none';
+      let k = capFit.get(key);
+      if (k === undefined) {
+        k = 1;
+        const fitIn = () => { dom.caption.style.fontSize = `${dom.capSize * k}px`; dom.kicker.style.fontSize = `${dom.kickSize * Math.max(k, 0.8)}px`; };
+        fitIn();
+        while (k > 0.5 && dom.panel.offsetHeight > dom.capBox.clientHeight + 1) { k *= 0.94; fitIn(); }
+        capFit.set(key, k);
+      }
+      dom.caption.style.fontSize = `${dom.capSize * k}px`;
+      dom.kicker.style.fontSize = `${dom.kickSize * Math.max(k, 0.8)}px`;
     }
     dom.capBox.style.opacity = capOp.toFixed(3);
     dom.capBox.style.transform = `translateY(${(1 - capOp) * base * 0.015}px)`;
     dom.panel.style.visibility = capText ? 'visible' : 'hidden';
+    dom.kicker.style.display = kick ? 'block' : 'none';
 
     // Chrome: header, progress, title cards.
     dom.header.style.opacity = (prog(t, T.intro - 0.4, 0.6) * (1 - prog(t, outro.endStart, 0.4))).toFixed(3);
     dom.progress.style.width = `${(clamp01(t / duration) * 100).toFixed(3)}%`;
     const introOp = t < T.intro ? 1 - prog(t, T.intro - 0.7, 0.7) : 0;
     dom.introCard.style.opacity = introOp.toFixed(3);
+    dom.introCard.querySelectorAll('.chip').forEach((c, i) => {
+      const a = ease.outCubic(prog(t, 0.9 + i * 0.09, 0.5));
+      c.style.opacity = a.toFixed(3);
+      c.style.transform = `translateY(${(1 - a) * base * 0.02}px)`;
+    });
+    // Chapter card.
+    if (chap) {
+      const cp = Math.min(prog(t, chap.start, 0.45), 1 - prog(t, chap.start + chap.dur - 0.4, 0.4));
+      if (dom.chapterCard.dataset.n !== String(chap.num)) {
+        dom.chapterCard.dataset.n = String(chap.num);
+        dom.chapterCard.querySelector('h1').textContent = chap.title;
+        dom.chapterCard.querySelector('p').textContent = chap.sub;
+      }
+      dom.chapterCard.style.display = 'flex';
+      dom.chapterCard.style.opacity = cp.toFixed(3);
+      dom.chapterCard.style.transform = `scale(${(0.96 + 0.04 * ease.outCubic(prog(t, chap.start, 0.6))).toFixed(4)})`;
+    } else dom.chapterCard.style.display = 'none';
+    // Journey chip: the followed item and the current step.
+    if (dom.journey.style.display !== 'none' || sc) {
+      const stepEl = dom.journey.querySelector('.step');
+      if (stepEl) {
+        const n = sc ? sc.index + 1 : 0;
+        const txt = n ? ` · step ${n} of ${scenes.length}` : '';
+        if (stepEl.textContent !== txt) stepEl.textContent = txt;
+        dom.journey.style.opacity = (prog(t, T.intro - 0.4, 0.6) * (chap ? 0.35 : 1) * (1 - prog(t, outro.start, 0.4))).toFixed(3);
+      }
+    }
     const rise = (start) => (1 - ease.outCubic(prog(t, start, 0.9))) * base * 0.03;
     dom.introCard.style.transform = `translateY(${rise(0.1)}px)`;
     dom.introCard.style.display = introOp > 0 ? 'flex' : 'none';
@@ -826,5 +1251,10 @@
     dom.endCard.style.opacity = endOp.toFixed(3);
     dom.endCard.style.display = endOp > 0 ? 'flex' : 'none';
     dom.endCard.style.transform = `translateY(${rise(outro.endStart)}px)`;
+    const em = dom.endCard.querySelector('.emblem');
+    if (em && endOp > 0) {
+      const k = ease.outBack(prog(t, outro.endStart, 0.9));
+      em.style.transform = `scale(${(0.4 + 0.6 * k + 0.03 * Math.sin(t * 3)).toFixed(4)}) rotate(${((1 - clamp01(k)) * -60).toFixed(1)}deg)`;
+    }
   };
 })();

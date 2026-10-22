@@ -4,7 +4,9 @@
 
 [![codebase-flow-video explaining itself: chat, code graph, accuracy checks, agents, scenes that fit the code](docs/assets/promo-poster.jpg)](docs/assets/promo-16x9.mp4)
 
-`codebase-flow-video` is a Claude Code plugin that reads your project with a code graph, checks every claim against the code, and turns it into an animated explainer that **shows the product working**: agents talking and calling tools, a chat answering with sources, requests being checked, records changing as they move through a pipeline, real screenshots of your app. It uses your brand colours and fonts, adds an original music track, and renders 16:9, 1:1 and 9:16, with a post ready to share.
+`codebase-flow-video` is a Claude Code plugin that reads your project with a code graph, checks every claim against the code, and turns it into an animated explainer that **shows the product working**: agents talking and calling tools, a chat answering with sources, requests being checked, records changing as they move through a pipeline, real screenshots of your app. It uses your brand colours and fonts in a vivid, layered look (deep colour fields, translucent glass cards, gradient badges), adds an original music track, and renders 16:9, 1:1 and 9:16, with a post ready to share.
+
+**Nothing is skipped.** Every entry point the code graph finds, and every step and branch in the map, must be shown in the video or listed as deliberately left out with a reason; the tools refuse to finish otherwise. Big projects become chapters, one per pipeline.
 
 The video above was rendered by the plugin itself, from a hand-written storyboard. ([launch site](https://faizankhan789.github.io/codebase-flow-video/))
 
@@ -15,7 +17,7 @@ The video above was rendered by the plugin itself, from a hand-written storyboar
 /plugin install codebase-flow-video@codebase-flow-video
 ```
 
-Then ask, inside any project: *"Make a video of how this codebase works."* On first use Claude runs the renderer setup (Playwright + headless Chromium + tree-sitter parsers, about 175 MB).
+Then ask, inside any project: *"Make a video of how this codebase works."* Or give it a link: *"Make a video of https://github.com/owner/repo"* (cloned and analysed) or *"Make a launch video of https://my-product.com"* (a tour of the live site). It runs wherever Claude Code runs: the CLI, the VS Code and JetBrains extensions, the desktop app, and Claude Code on the web (with Node 18+ and ffmpeg available). On first use Claude runs the renderer setup (Playwright + headless Chromium + tree-sitter parsers, about 175 MB).
 
 <details>
 <summary>No plugin installer? Copy the skill directly.</summary>
@@ -60,12 +62,14 @@ Steer it in plain words or with options:
 
 | Option | Values | Default |
 |---|---|---|
-| `--style` | `auto`, `midnight`, `daylight`, `neural`, `ledger`, `storefront`, `clinic`, `terminal`, `boardroom`, `ocean`, `candy` | `auto`: your brand + a preset for your domain |
+| `--style` | `auto`, `launch`, `midnight`, `daylight`, `neural`, `ledger`, `storefront`, `clinic`, `terminal`, `boardroom`, `ocean`, `candy` | `auto`: your brand + a preset for your domain |
+| `--bg` | `white`, `dark` or any hex colour; cards, text, icons and glows adapt to it | `white` |
 | `--audience` | `linkedin`, `clients`, `executives`, `investors`, `developers` | `linkedin` |
 | `--format` | `16x9`, `1x1`, `9x16`, `all` | `all` |
 | `--screens` | capture the running app (asks first; local/staging, demo data) | off |
 | `--music FILE` / `--no-music` | your track / silent | an original generated track |
 | `--cut` | `full`, `highlights` (≤ 60 s) | `full` |
+| `--export svg,png` | also save every scene frame and every element (avatars, cards, callouts, badges) as SVG and transparent PNG | off |
 
 Everything lands in `flow-video/` in your repo:
 
@@ -91,16 +95,18 @@ Add `flow-video/` to `.gitignore` if you don't want to commit the videos.
 | Background jobs | a **queue** with workers and retries |
 | A web or mobile UI | real **screenshots**, highlights measured from the page |
 | A key rule (developer audience) | the real **code**, line by line |
+| A section to introduce | a **headline**: big glowing kinetic words with a sparkle and light lines, or moving through a glass orb |
+| A product to show off | a **showcase**: the real screen (or a dashboard built from the code) in a tilted 3D glass window with callouts |
 
-A box-and-arrow map is still there for an overview shot. Scene reference: [`references/visuals-guide.md`](skills/codebase-flow-video/references/visuals-guide.md).
+The order of the video adapts too: an agent system, a RAG assistant, an API, a data pipeline or a shop each get their own story arc, with chapters per pipeline and the item being processed (an order, a ticket) followed from scene to scene. Layouts adapt to the data (an agent that talks to everyone sits in the middle), and the renderer checks every scene for overlapping elements. A box-and-arrow map is still there for an overview shot. Scene reference: [`references/visuals-guide.md`](skills/codebase-flow-video/references/visuals-guide.md).
 
 ## How it works
 
 1. **Graph.** `graph.mjs` indexes the repo with tree-sitter (JavaScript, TypeScript, Python, Go, Java, Ruby, PHP, C#, C++, Rust, Bash): entry points, calls, branches, external services. Claude asks small questions (`calls`, `path`, `branches`, `show`) instead of reading whole files, which keeps token use low on big repos; only changed files are re-parsed.
 2. **Map.** Claude traces each entry point to its effects and writes `FLOW.md`: every step and branch with `file:line` and the exact code, plus a Coverage section that reconciles what was found against what was traced.
-3. **Verify.** `verify-flow.mjs` checks every cited file, line and quote against the code; a fresh reviewer agent checks what each claim means. A second check compares the storyboard with `FLOW.md`.
-4. **Look.** `detect-style.mjs` reads your brand (Tailwind, CSS variables, theme files, Android, Flutter, iOS, web manifest, fonts) and suggests a style preset and scene types from your dependencies.
-5. **Story.** Claude writes `storyboard.json`: plain-language scenes, each pointing back to `FLOW.md`. The renderer refuses to render if a branch is neither shown nor deliberately left out, and flags claims ("instantly", "secure", "always") the code does not prove.
+3. **Verify.** `verify-flow.mjs` checks every cited file, line and quote against the code, fails on any entry point that was neither traced nor listed as out of scope, and flags functions on a traced path that make decisions or call outside services but were left out. A fresh reviewer agent checks what each claim means. A second check compares the storyboard with `FLOW.md`.
+4. **Look.** `detect-style.mjs` reads your brand (Tailwind, CSS variables, theme files, Android, Flutter, iOS, web manifest, fonts) and suggests a style preset and scene types from your dependencies. Videos are white by default; ask for dark or a brand background and every element follows. Nothing is ever cut by the frame: scenes that reach the edge are scaled to fit, and the render stops if anything would still be clipped.
+5. **Story.** Claude picks a story arc for this kind of system and writes `storyboard.json`: plain-language scenes, each pointing back to `FLOW.md`. The renderer refuses to render if any step or branch is neither shown nor deliberately left out (and prints the coverage), warns on text too long for its slot, samples every scene for overlapping elements, and flags claims ("instantly", "secure", "always") the code does not prove.
 6. **Render.** A deterministic engine animates every frame in headless Chromium, `music.mjs` composes a track that changes chord on each scene, and ffmpeg encodes H.264 + AAC. Optional: `capture.mjs` screenshots your running app first.
 
 Run the tools by hand from a clone:
@@ -111,6 +117,8 @@ bash renderer/setup.sh
 node renderer/render.mjs examples/helpdesk-agents/storyboard.json --out /tmp/demo   # animated scenes
 node renderer/graph.mjs index /path/to/repo && node renderer/graph.mjs --repo /path/to/repo summary
 node renderer/detect-style.mjs /path/to/repo
+node renderer/fetch-source.mjs https://github.com/owner/repo      # or a website URL for a site tour
+node renderer/render.mjs examples/launch-demo/storyboard.json --export svg,png --out /tmp/launch
 node renderer/verify-flow.mjs /path/to/repo/flow-video/FLOW.md
 (cd renderer && npm test)
 ```

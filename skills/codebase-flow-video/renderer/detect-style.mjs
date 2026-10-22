@@ -185,7 +185,9 @@ export function detectStyle(root) {
   const uniqVisuals = visuals.filter((v) => (seen.has(v.type) ? false : seen.add(v.type)));
 
   const lightApp = appBg ? lumOf(appBg) > 0.5 : null;
-  const preset = domains[0]?.preset || (lightApp ? 'boardroom' : 'midnight');
+  // Web products with no more specific domain get the cinematic launch look; internal tools the boardroom look.
+  const webApp = [...deps].some((d) => /^(next|react|react-dom|vue|nuxt|svelte|@sveltejs\/kit|@angular\/core|remix|@remix-run\/react|astro|solid-js)$/i.test(d));
+  const preset = domains[0]?.preset || (webApp ? 'launch' : lightApp ? 'boardroom' : 'midnight');
   const style = { preset };
   if (accent) style.accent = accent.hex;
   if (accent2) style.accent2 = accent2.hex;
@@ -205,6 +207,6 @@ export function detectStyle(root) {
   };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log(JSON.stringify(detectStyle(resolve(process.argv[2] || '.')), null, 2));
 }

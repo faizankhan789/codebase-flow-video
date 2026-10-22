@@ -4,7 +4,8 @@ import { readFileSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validate, softWarnings, assetPath } from '../render.mjs';
+import { validate, softWarnings, assetPath, coverage, visualRefs } from '../render.mjs';
+import { parseFlow } from '../flowdoc.mjs';
 import { validateVisual, VISUAL_TYPES } from '../visuals.mjs';
 import { resolveStyle, PRESETS, contrast } from '../style.mjs';
 import { generateMusic } from '../music.mjs';
@@ -22,7 +23,10 @@ test('storyboards made only of visuals need no nodes; map scenes still do', () =
 });
 
 test('every visual type validates its required data and references', () => {
-  assert.equal(VISUAL_TYPES.length, 9);
+  assert.equal(VISUAL_TYPES.length, 11);
+  assert.ok(has(validateVisual({ type: 'headline' }, 'v', ICONS), /text: the headline/));
+  assert.ok(has(validateVisual({ type: 'showcase', callouts: [{ side: 'up' }] }, 'v', ICONS), /needs "src".*or "ui"/));
+  assert.deepEqual(validateVisual({ type: 'showcase', ui: { app: 'X', widgets: [{ type: 'ring', value: 80 }] }, callouts: [{ title: 'Live' }] }, 'v', ICONS), []);
   const agents = { type: 'agents', agents: [{ id: 'a', name: 'A' }], tools: [{ id: 't', name: 'T' }],
     steps: [{ from: 'a', to: 'ghost', type: 'message' }, { from: 'a', to: 'a', type: 'tool' }, { from: 'x', type: 'think' }] };
   const e = validateVisual(agents, 'v', ICONS);
@@ -44,7 +48,7 @@ test('claims inside visuals are flagged like captions', () => {
 
 test('styles resolve presets, overrides and keep brand colours readable', () => {
   assert.ok(Object.keys(PRESETS).length >= 10);
-  const r = resolveStyle({ style: { preset: 'neural', accent: '#101010', font: { family: 'Inter' } } }, HERE);
+  const r = resolveStyle({ style: { preset: 'neural', theme: 'dark', accent: '#101010', font: { family: 'Inter' } } }, HERE);
   assert.deepEqual(r.errors, []);
   assert.ok(contrast(r.style.accent, r.style.colors.bg) >= 3, 'dark accent nudged on dark background');
   assert.ok(has(r.warnings, /low contrast/));
@@ -52,6 +56,29 @@ test('styles resolve presets, overrides and keep brand colours readable', () => 
   assert.ok(has(resolveStyle({ style: { preset: 'nope' } }, HERE).errors, /unknown/));
   assert.equal(resolveStyle({ theme: 'light' }, HERE).style.preset, 'daylight');
   for (const [name, p] of Object.entries(PRESETS)) assert.ok(contrast(p.colors.text, p.colors.bg) >= 7, `${name} text contrast`);
+});
+
+test('background is white by default, adapts to any colour, and --bg wins', () => {
+  for (const name of Object.keys(PRESETS)) {
+    const st = resolveStyle({ style: { preset: name } }, HERE).style;
+    assert.equal(st.colors.bg, '#FFFFFF', `${name} defaults to white`);
+    assert.equal(st.theme, 'light');
+    assert.ok(contrast(st.colors.text, st.colors.bg) >= 7 && contrast(st.colors.muted, st.colors.bg) >= 4.5, `${name} text readable on white`);
+    assert.ok(contrast(st.accent, st.colors.bg) >= 3, `${name} accent readable on white`);
+    const dk = resolveStyle({ style: { preset: name, theme: 'dark' } }, HERE).style;
+    assert.equal(dk.theme, 'dark');
+    assert.ok(contrast(dk.colors.text, dk.colors.bg) >= 7, `${name} dark text readable`);
+  }
+  for (const bg of ['#F3EFE6', '#0E2A2A', '#FFE4F1', '#1E1B4B', '#808080']) {
+    const st = resolveStyle({ style: { preset: 'launch', bg } }, HERE).style;
+    assert.equal(st.colors.bg, bg);
+    const best = Math.max(contrast('#000000', bg), contrast('#FFFFFF', bg));
+    assert.ok(contrast(st.colors.text, bg) >= Math.min(7, best - 0.01), `text on ${bg}`);
+    assert.ok(contrast(st.colors.muted, bg) >= 4.5, `muted on ${bg}`);
+  }
+  assert.equal(resolveStyle({ style: { preset: 'launch', bg: '#FFFFFF' } }, HERE, 'dark').style.theme, 'dark');
+  assert.ok(has(resolveStyle({ style: { bg: 'blue' } }, HERE).errors, /hex/));
+  assert.equal(resolveStyle({ style: { preset: 'launch' } }, HERE).warnings.length, 0, 'adapting a preset is not the user\'s problem');
 });
 
 test('brand colours parse from every common notation', () => {
@@ -100,4 +127,51 @@ test('capture config refuses secrets and bad pages', () => {
   assert.ok(has(e, /path must start/));
   assert.ok(has(e, /actions\[0\]/));
   assert.ok(has(e, /env\.API_KEY looks like a real secret/));
+});
+
+const FLOW3 = parseFlow([
+  '## Pipelines', '### 1. A',
+  "1. **P1.1 One**: `a.js:1` `const one = 1;`", "2. **P1.2 Two**: `a.js:2` `const two = 2;`", "   - Branch B1: x",
+  '### 2. B', "1. **P2.1 Three**: `b.js:1` `const three = 3;`",
+  '## Branch index', "| B1 | `a.js:2` `if (two > one)` | c | d |",
+].join('\n'));
+
+test('every FLOW.md step must be shown or omitted; refs inside visual elements count', () => {
+  const sb = { title: 'T', scenes: [{ caption: 'c', ref: 'P1.1', visual: { type: 'decision', question: 'Q?', options: [{ label: 'a', ref: 'B1' }, { label: 'b' }] } }] };
+  const errs = validate(sb, FLOW3);
+  assert.ok(has(errs, /2 of 3 FLOW\.md steps are not shown.*P1\.2, P2\.1/));
+  sb.scenes[0].visual.options[1].ref = 'P1.2';
+  sb.omitted = [{ ref: 'P2', reason: 'second pipeline gets its own video' }];
+  assert.deepEqual(validate(sb, FLOW3), []);
+  assert.deepEqual(visualRefs(sb.scenes[0].visual), ['B1', 'P1.2']);
+  assert.deepEqual(coverage(sb, FLOW3), { steps: 3, stepsShown: 2, stepsOmitted: 1, branches: 1, branchesShown: 1, branchesOmitted: 0 });
+  sb.omitted = [{ ref: 'P9', reason: 'x' }];
+  assert.ok(has(validate(sb, FLOW3), /no steps in FLOW\.md start with P9/));
+});
+
+test('story fields are validated and long text is flagged before it can overlap', () => {
+  const sb = { title: 'T', journey: { icon: 'cart' }, intro: { highlights: [{ icon: 'nope' }] },
+    scenes: [{ caption: 'c', chapter: '', transition: 'spin', visual: { type: 'agents', agents: [{ id: 'a', name: 'A very long agent name' }] } }] };
+  const errs = validate(sb);
+  assert.ok(has(errs, /"journey" needs "item"/));
+  assert.ok(has(errs, /highlights\[0\] needs "label"/));
+  assert.ok(has(errs, /chapter must be a short title/));
+  assert.ok(has(errs, /transition must be/));
+  const ok = { title: 'T', scenes: [{ caption: 'c', visual: { type: 'agents', agents: [{ id: 'a', name: 'A very long agent name' }] } }] };
+  assert.deepEqual(validate(ok), [], 'cast-only agents scene is valid');
+  assert.ok(has(softWarnings(ok), /agents\[0\]\.name .* keep it to 2/));
+});
+
+test('headline and showcase scenes may skip the caption; other scenes may not', () => {
+  assert.deepEqual(validate({ title: 'T', scenes: [{ visual: { type: 'headline', text: 'Smart control' } }, { visual: { type: 'showcase', ui: { app: 'X' } } }] }), []);
+  assert.ok(has(validate({ title: 'T', scenes: [{ visual: { type: 'checklist', items: [{ label: 'a' }] } }] }), /missing "caption"/));
+});
+
+test('URLs are classified as git repositories, websites or refused', async () => {
+  const { classify } = await import('../fetch-source.mjs');
+  assert.deepEqual(classify('https://github.com/vercel/next.js/tree/canary/packages/next'),
+    { kind: 'git', clone: 'https://github.com/vercel/next.js.git', host: 'github.com', owner: 'vercel', repo: 'next.js', branch: 'canary', sub: 'packages/next' });
+  assert.equal(classify('git@github.com:org/repo.git').kind, 'git');
+  assert.equal(classify('https://example.com/pricing').kind, 'site');
+  for (const bad of ['file:///etc/passwd', 'ext::sh -c touch', 'javascript:alert(1)', 'not a url']) assert.equal(classify(bad).kind, 'invalid', bad);
 });

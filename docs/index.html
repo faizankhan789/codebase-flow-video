@@ -4,162 +4,362 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>codebase-flow-video</title>
-<meta name="description" content="A Claude Code plugin that reads your codebase with a code graph, checks every claim against the code, and turns it into an animated explainer video.">
+<meta name="description" content="A free Claude Code plugin that maps your codebase, checks every claim against the code, and turns it into an animated explainer video in 16:9, 1:1 and 9:16.">
 <meta property="og:title" content="codebase-flow-video">
-<meta property="og:description" content="Your codebase, explained in one video. Checked against the real code.">
-<meta property="og:image" content="assets/promo-poster.jpg">
+<meta property="og:description" content="Your codebase, explained in one video. Every scene traced to a line of code.">
+<meta property="og:image" content="assets/scenes/white/showcase.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"><!-- taste-skill-ignore: mono only for literal code -->
 <style>
   :root {
-    --bg: #07060D; --glow: #1C1238; --card: #110E1F; --border: #2A2342; --text: #F3F0FF; --muted: #A9A1C4;
-    --accent: #E06BF5; --accent2: #22D3EE; --good: #4ADE80;
-    --radius: 18px; --max: 1120px;
-    font-family: "Space Grotesk", Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --paper: #FFFFFF; --ink: #0E1324; --slate: #556079; --mist: #F2F4F8; --line: #E3E7EF;
+    --blue: #2D5BFF; --blue-ink: #1B3FD6; --mark: #FFE680;
+    --max: 1200px; --gut: clamp(16px, 4vw, 40px);
+    --sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "JetBrains Mono", /* taste-skill-ignore: literal code only */ "SF Mono", Menlo, Consolas, monospace;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-  body { margin: 0; background: radial-gradient(ellipse 90% 60% at 50% 0%, var(--glow), var(--bg) 70%) var(--bg); color: var(--text); line-height: 1.55; }
-  a { color: var(--accent2); }
-  .skip { position: absolute; left: -999px; top: 8px; background: var(--card); color: var(--text); padding: 8px 14px; border-radius: 10px; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 400 17px/1.6 var(--sans); }
+  img, video { display: block; max-width: 100%; }
+  a { color: var(--blue-ink); text-underline-offset: 3px; }
+  :focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); }
+  .skip { position: absolute; left: -999px; top: 8px; background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 8px; }
   .skip:focus { left: 16px; z-index: 10; }
-  header.nav { max-width: var(--max); margin: 0 auto; padding: 20px 20px 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .01em; color: var(--text); text-decoration: none; }
-  .brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 16px var(--accent); }
-  .nav a.gh { color: var(--muted); text-decoration: none; font-weight: 600; border: 1px solid var(--border); padding: 8px 14px; border-radius: 999px; }
-  .nav a.gh:hover, .nav a.gh:focus-visible { color: var(--text); border-color: var(--accent); }
-  main { max-width: var(--max); margin: 0 auto; padding: 0 20px 80px; }
-  .hero { text-align: center; padding: 56px 0 28px; }
-  .hero h1 { font-size: clamp(36px, 7vw, 76px); line-height: 1.02; letter-spacing: -.035em; margin: 0 0 18px; }
-  .hero h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .hero p.lede { font-size: clamp(17px, 2.2vw, 21px); color: var(--muted); max-width: 720px; margin: 0 auto 30px; }
-  .video { position: relative; border-radius: calc(var(--radius) + 4px); overflow: hidden; border: 1px solid var(--border); box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(224,107,245,.08); background: #000; }
-  .video video { display: block; width: 100%; height: auto; }
-  .install { margin: 28px auto 0; max-width: 760px; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
-  .install .label { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
-  .cmd { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .cmd pre { margin: 0; overflow-x: auto; font: 15px/1.7 "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; color: var(--text); }
-  .cmd button { flex: none; font: 600 14px inherit; font-family: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; }
-  .cmd button:focus-visible { outline: 3px solid var(--accent2); outline-offset: 2px; }
-  .install small { display: block; color: var(--muted); margin-top: 10px; }
-  section { padding: 64px 0 0; }
-  h2 { font-size: clamp(26px, 4vw, 40px); letter-spacing: -.02em; margin: 0 0 10px; line-height: 1.1; }
-  .sub { color: var(--muted); margin: 0 0 28px; max-width: 760px; font-size: 18px; }
-  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
-  figure { margin: 0; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  figure img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
-  figcaption { padding: 14px 16px 16px; }
-  figcaption b { display: block; font-size: 17px; }
-  figcaption span { color: var(--muted); font-size: 15px; }
-  .steps { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); counter-reset: s; }
-  .step { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-  .step::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(224,107,245,.16); color: var(--accent); font-weight: 800; margin-bottom: 12px; }
-  .step b { display: block; font-size: 18px; margin-bottom: 4px; }
-  .step span { color: var(--muted); }
-  .step code, li code { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-size: .92em; color: var(--accent2); }
-  .styles { display: flex; flex-wrap: wrap; gap: 10px; }
-  .chip { display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); font-weight: 600; }
-  .chip i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.18); }
-  .chip small { color: var(--muted); font-weight: 500; }
-  .two { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
-  ul.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-  ul.checks li { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px 14px 48px; position: relative; }
-  ul.checks li::before { content: "✓"; position: absolute; left: 16px; top: 13px; color: var(--good); font-weight: 900; }
-  footer { max-width: var(--max); margin: 0 auto; padding: 32px 20px 48px; color: var(--muted); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); }
+
+  /* Nav */
+  .nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 22px; padding-bottom: 22px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; color: var(--ink); text-decoration: none; }
+  .brand svg { flex: none; }
+  .nav ul { display: flex; gap: 28px; list-style: none; margin: 0; padding: 0; align-items: center; }
+  .nav ul a { color: var(--slate); text-decoration: none; font-weight: 500; font-size: 15px; }
+  .nav ul a:hover { color: var(--ink); }
+  .nav .gh { color: var(--ink); font-weight: 600; padding: 9px 16px; border-radius: 999px; background: var(--mist); }
+  @media (max-width: 720px) { .nav ul li:not(:last-child) { display: none; } }
+
+  /* Hero */
+  .hero { padding-top: clamp(32px, 6vw, 80px); display: grid; gap: clamp(24px, 3vw, 40px) clamp(24px, 4vw, 56px); grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: start; }
+  .hero h1 { grid-column: 1 / -1; margin: 0; font-size: clamp(42px, 7.4vw, 104px); line-height: .96; letter-spacing: -.045em; font-weight: 800; max-width: 12.5em; }
+  .hero .lede { margin: 0; }
+  .hero .lede { margin: 0 0 24px; font-size: clamp(18px, 1.6vw, 20px); color: var(--slate); max-width: 34em; }
+  .hero .lede strong { color: var(--ink); font-weight: 600; }
+  @media (max-width: 900px) { .hero { grid-template-columns: minmax(0, 1fr); align-items: start; } }
+  .install { border-radius: 16px; background: var(--ink); color: #E8ECF8; padding: 16px 16px 16px 20px; display: flex; gap: 14px; align-items: center; }
+  .install pre { margin: 0; flex: 1; min-width: 0; overflow-x: auto; font: 400 13.5px/1.75 var(--mono); }
+  .install pre span { color: #8D97B5; user-select: none; }
+  .copy { flex: none; font: 600 15px var(--sans); color: #fff; background: var(--blue); border: 0; border-radius: 10px; padding: 11px 18px; cursor: pointer; transition: transform 160ms var(--ease-out), background-color 160ms ease; }
+  .copy:hover { background: #1F48E6; }
+  .copy:active { transform: scale(.97); }
+  .hint { margin: 12px 0 0; font-size: 15px; color: var(--slate); }
+
+  .reel { margin-top: clamp(32px, 5vw, 56px); border-radius: 20px; overflow: hidden; background: #02040C; }
+  .reel video { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .reel-note { margin: 12px 2px 0; font-size: 14px; color: var(--slate); }
+
+  section.wrap { margin-top: clamp(80px, 10vw, 136px); }
+  h2 { margin: 0 0 14px; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.04; letter-spacing: -.035em; font-weight: 800; max-width: 18em; }
+  .sub { margin: 0; color: var(--slate); font-size: clamp(17px, 1.5vw, 19px); max-width: 38em; }
+
+  /* Line to scene */
+  .trace { margin-top: 40px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(16px, 3vw, 32px); align-items: center; }
+  @media (max-width: 900px) { .trace { grid-template-columns: minmax(0, 1fr); } }
+  .flow { border-radius: 16px; background: var(--mist); padding: 22px 22px 20px; font: 400 14px/1.7 var(--mono); color: #2B3350; overflow-x: auto; }
+  .flow .h { font: 700 15px var(--sans); color: var(--ink); margin-bottom: 10px; }
+  .flow .ref { color: var(--slate); }
+  .flow code { display: block; white-space: pre; }
+  .flow .hit { background: var(--mark); margin: 0 -8px; padding: 0 8px; border-radius: 4px; color: var(--ink); }
+  .flow .hit .ln { color: #4A536C; }
+  .flow .ln { color: #5F6984; display: inline-block; width: 2.2em; user-select: none; }
+  .flow .b { margin-top: 16px; font-family: var(--sans); font-size: 15px; color: #2B3350; }
+  .flow .b b { color: var(--ink); }
+  .trace figure { margin: 0; }
+  .shot { border-radius: 14px; overflow: hidden; background: var(--mist); }
+  .shot img { width: 100%; height: auto; }
+  figcaption { margin-top: 12px; font-size: 15px; color: var(--slate); }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  /* Switcher */
+  .studio { margin-top: 40px; display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: clamp(20px, 3vw, 40px); align-items: start; }
+  @media (max-width: 900px) { .studio { grid-template-columns: minmax(0, 1fr); } }
+  .controls fieldset { border: 0; margin: 0 0 26px; padding: 0; }
+  .controls legend { font-weight: 700; font-size: 16px; margin-bottom: 10px; padding: 0; }
+  .seg { display: flex; flex-wrap: wrap; gap: 8px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { display: inline-flex; align-items: center; gap: 9px; padding: 10px 14px; border-radius: 12px; background: var(--mist); font-weight: 600; font-size: 15px; cursor: pointer; user-select: none; transition: background-color 160ms ease, color 160ms ease, transform 160ms var(--ease-out); }
+  .seg label:active { transform: scale(.97); }
+  .seg input:checked + label { background: var(--ink); color: #fff; }
+  .seg input:focus-visible + label { outline: 3px solid var(--blue); outline-offset: 2px; }
+  .sw { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(14, 19, 36, .25); } /* taste-skill-ignore: ring keeps the white swatch visible */
+  .controls p { margin: 0; font-size: 15px; color: var(--slate); }
+  .controls code { font: 500 13.5px var(--mono); background: var(--mist); padding: 2px 6px; border-radius: 6px; color: var(--ink); }
+  .stage { border-radius: 20px; background: var(--mist); height: clamp(320px, 46vw, 560px); display: flex; align-items: center; justify-content: center; padding: clamp(14px, 2.4vw, 28px); }
+  .stage img { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 12px; transition: opacity 200ms var(--ease-out); }
+  .stage img.swap { opacity: 0; }
+
+  /* Gallery */
+  .gallery { margin-top: 40px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 40px 24px; }
+  .gallery figure { margin: 0; grid-column: span 4; }
+  .gallery figure.wide { grid-column: span 6; }
+  @media (max-width: 900px) { .gallery figure, .gallery figure.wide { grid-column: span 6; } }
+  @media (max-width: 560px) { .gallery figure, .gallery figure.wide { grid-column: span 12; } }
+  .gallery img { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; transition: opacity 200ms var(--ease-out); }
+  .gallery h3 { margin: 14px 0 2px; font-size: 18px; letter-spacing: -.01em; }
+  .gallery p { margin: 0; color: var(--slate); font-size: 15px; }
+  .gallery-tools { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; color: var(--slate); font-size: 15px; }
+
+  /* Process */
+  .process { margin-top: 40px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(20px, 4vw, 56px); align-items: start; }
+  @media (max-width: 900px) { .process { grid-template-columns: minmax(0, 1fr); } }
+  .process ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+  .process li { counter-increment: s; display: grid; grid-template-columns: 44px 1fr; gap: 4px 14px; padding: 0 0 30px; }
+  .process li::before { content: counter(s); grid-row: span 2; width: 36px; height: 36px; border-radius: 50%; background: var(--mist); display: grid; place-items: center; font-weight: 700; color: var(--blue-ink); }
+  .process li b { font-size: 19px; letter-spacing: -.01em; }
+  .process li span { color: var(--slate); }
+  .process li code { font: 500 14px var(--mono); color: var(--ink); background: var(--mist); padding: 1px 6px; border-radius: 6px; }
+  .term { border-radius: 16px; background: var(--ink); color: #C9D1E8; padding: 20px 22px; font: 400 13.5px/1.8 var(--mono); overflow-x: auto; position: sticky; top: 24px; }
+  .term .p { color: #8D97B5; }
+  .term .ok { color: #7EE2A8; }
+  .term .fit { color: #9BB8FF; }
+  .term .dim { color: #7781A0; }
+  .term div { white-space: pre; }
+
+  /* Trust */
+  .rules { margin-top: 40px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+  @media (max-width: 760px) { .rules { grid-template-columns: minmax(0, 1fr); } }
+  .rules div { padding: 18px 22px 20px; margin-bottom: 14px; border-radius: 16px; background: var(--mist); }
+  .rules b { display: block; font-size: 19px; letter-spacing: -.01em; margin-bottom: 4px; }
+  .rules span { color: var(--slate); }
+
+  /* Styles */
+  .presets { margin-top: 32px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+  .preset { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--mist); }
+  .preset i { flex: none; width: 34px; height: 34px; border-radius: 10px; }
+  .preset b { display: block; font-size: 15px; line-height: 1.2; }
+  .preset small { color: var(--slate); font-size: 13.5px; }
+
+  /* CTA + footer */
+  .cta { margin-top: clamp(72px, 10vw, 128px); border-radius: 24px; background: var(--ink); color: #fff; padding: clamp(28px, 5vw, 56px); display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; }
+  @media (max-width: 900px) { .cta { grid-template-columns: minmax(0, 1fr); } }
+  .cta h2 { color: #fff; margin: 0; }
+  .cta p { margin: 10px 0 0; color: #AEB7D3; }
+  .cta .install { background: #1A2138; }
+  footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 36px; padding-bottom: 48px; color: var(--slate); font-size: 15px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .stage img, .gallery img, .seg label, .copy { transition: opacity 120ms ease; }
+  }
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="nav">
-  <a class="brand" href="#"><i aria-hidden="true"></i>codebase-flow-video</a>
-  <a class="gh" href="https://github.com/faizankhan789/codebase-flow-video">GitHub ↗</a>
+<header class="wrap nav">
+  <a class="brand" href="#">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="7" fill="#0E1324"/><path d="M10 8.5v9l7.5-4.5z" fill="#fff"/></svg>
+    codebase-flow-video
+  </a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="#trace">How it reads code</a></li>
+      <li><a href="#studio">Formats</a></li>
+      <li><a href="#scenes">Scenes</a></li>
+      <li><a class="gh" href="https://github.com/faizankhan789/codebase-flow-video">GitHub</a></li>
+    </ul>
+  </nav>
 </header>
+
 <main id="main">
-  <section class="hero" aria-labelledby="t">
-    <h1 id="t">Your codebase,<br><em>explained in one video.</em></h1>
-    <p class="lede">A free Claude Code plugin that reads your code with a code graph, checks every claim against it, and animates how it really works: agents at work, chats answering, requests being checked, data changing. In your brand, with music, ready for LinkedIn.</p>
-    <div class="video">
-      <video id="hero" src="assets/promo-16x9.mp4" poster="assets/promo-poster.jpg" muted loop playsinline preload="metadata" aria-label="Demo video: codebase-flow-video explaining itself, rendered by the plugin"></video>
-    </div>
-    <div class="install">
-      <div class="label">Install in Claude Code</div>
-      <div class="cmd"><pre id="cmd">/plugin marketplace add faizankhan789/codebase-flow-video
-/plugin install codebase-flow-video@codebase-flow-video</pre><button type="button" id="copy">Copy</button></div>
-      <small>Then, in any project: “Make a video of how this codebase works.” Needs Node 18+ and ffmpeg.</small>
-    </div>
-  </section>
-
-  <section aria-labelledby="scenes">
-    <h2 id="scenes">Not a flowchart</h2>
-    <p class="sub">Each scene is picked from what your code actually does. Every element comes from a verified map of the code.</p>
-    <div class="grid">
-      <figure><img src="assets/scenes/agents.jpg" alt="Three agents passing messages and calling tools, with an activity log" loading="lazy"><figcaption><b>Agents</b><span>Planners, researchers, tool calls and handoffs, step by step.</span></figcaption></figure>
-      <figure><img src="assets/scenes/chat.jpg" alt="A chat window where the assistant answers with source chips" loading="lazy"><figcaption><b>Chat</b><span>Typing, streamed answers and the sources behind them.</span></figcaption></figure>
-      <figure><img src="assets/scenes/request.jpg" alt="A request travelling to a service that ticks off checks, saves and confirms" loading="lazy"><figcaption><b>Request</b><span>An API call checked, saved and answered.</span></figcaption></figure>
-      <figure><img src="assets/scenes/pipeline.jpg" alt="A record card gaining and changing fields as it passes pipeline stages" loading="lazy"><figcaption><b>Pipeline</b><span>One record changing as it moves through each stage.</span></figcaption></figure>
-      <figure><img src="assets/scenes/decision.jpg" alt="An item reaching a question and taking one of two outcomes" loading="lazy"><figcaption><b>Decision</b><span>Every business branch, with each outcome shown.</span></figcaption></figure>
-      <figure><img src="assets/scenes/checklist.jpg" alt="A list of checks ticking one by one, ending in a verdict" loading="lazy"><figcaption><b>Checklist</b><span>Validations, fraud rules and guardrails.</span></figcaption></figure>
-      <figure><img src="assets/scenes/queue.jpg" alt="Jobs moving from a queue to workers, one retrying" loading="lazy"><figcaption><b>Queue</b><span>Background jobs, workers and retries.</span></figcaption></figure>
-      <figure><img src="assets/scenes/screen.jpg" alt="A real screenshot of an app in a browser frame with highlighted elements" loading="lazy"><figcaption><b>Screen</b><span>Real screenshots of your running app, highlights measured from the page.</span></figcaption></figure>
-      <figure><img src="assets/scenes/code.jpg" alt="An editor window revealing real code with one line highlighted" loading="lazy"><figcaption><b>Code</b><span>The one rule developers should see, copied from the repo.</span></figcaption></figure>
-    </div>
-  </section>
-
-  <section aria-labelledby="how">
-    <h2 id="how">How it works</h2>
-    <p class="sub">Accuracy first, then story, then motion.</p>
-    <div class="steps">
-      <div class="step"><b>Graph the code</b><span>Tree-sitter indexes 11 languages. Claude asks “who calls this?” instead of reading whole files, so big repos stay cheap.</span></div>
-      <div class="step"><b>Map every step</b><span><code>FLOW.md</code> lists every pipeline, step and branch with <code>file:line</code> and the exact code.</span></div>
-      <div class="step"><b>Check every claim</b><span>A script confirms each file, line and quote; a fresh reviewer agent checks what they mean.</span></div>
-      <div class="step"><b>Animate the story</b><span>Plain-language scenes in your brand style, original music, 16:9, 1:1 and 9:16, plus a post to share.</span></div>
-    </div>
-  </section>
-
-  <section aria-labelledby="look">
-    <h2 id="look">Looks like your product</h2>
-    <p class="sub">It reads your brand colours and fonts from Tailwind, CSS, theme files, Android, Flutter or iOS, and picks a style that fits your domain.</p>
-    <div class="styles">
-      <span class="chip"><i style="background:#7C5CFF"></i>midnight <small>anything</small></span>
-      <span class="chip"><i style="background:#D946EF"></i>neural <small>AI &amp; agents</small></span>
-      <span class="chip"><i style="background:#10B981"></i>ledger <small>fintech</small></span>
-      <span class="chip"><i style="background:#EA580C"></i>storefront <small>e-commerce</small></span>
-      <span class="chip"><i style="background:#0D9488"></i>clinic <small>healthcare</small></span>
-      <span class="chip"><i style="background:#4ADE80"></i>terminal <small>dev tools</small></span>
-      <span class="chip"><i style="background:#2563EB"></i>boardroom <small>enterprise</small></span>
-      <span class="chip"><i style="background:#22D3EE"></i>ocean <small>data</small></span>
-      <span class="chip"><i style="background:#8B5CF6"></i>candy <small>playful</small></span>
-      <span class="chip"><i style="background:#6D4AFF"></i>daylight <small>light</small></span>
-    </div>
-  </section>
-
-  <section aria-labelledby="trust">
-    <div class="two">
-      <div>
-        <h2 id="trust">Built not to make things up</h2>
-        <p class="sub">The video can only be as accurate as the map, and the map can only claim what the code shows.</p>
+  <div class="wrap hero">
+    <h1>Your codebase, explained<br> in one video.</h1>
+    <p class="lede">A free Claude Code plugin. It maps every step your code takes, checks each one against the source, and animates it as agents working, chats answering and requests being checked. <strong>Every scene traces back to a line of code.</strong></p>
+    <div>
+      <div class="install">
+        <pre id="cmd"><span>&gt; </span>/plugin marketplace add faizankhan789/codebase-flow-video
+<span>&gt; </span>/plugin install codebase-flow-video@codebase-flow-video</pre>
+        <button type="button" class="copy" data-copy="cmd">Copy</button>
       </div>
-      <ul class="checks">
-        <li>Every step and branch cites <code>file:line</code> and the exact code; a script rejects anything that does not match.</li>
-        <li>Every branch in the code is shown, or listed as deliberately left out, with a reason.</li>
-        <li>“Instantly”, “secure”, “always” and other claims are flagged unless the code proves them.</li>
-        <li>Suspected bugs found while tracing are reported, not animated away.</li>
-      </ul>
+      <p class="hint">Then, in any project: “Make a video of how this codebase works.” A GitHub link or a website works too. Needs Node 18+ and ffmpeg.</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="reel">
+      <video id="reel" src="assets/promo-16x9.mp4" poster="assets/promo-poster.jpg" muted loop playsinline preload="metadata" aria-label="Demo video rendered by the plugin, explaining how it works"></video>
+    </div>
+    <p class="reel-note">Rendered by the plugin itself, from a storyboard. Music is generated for each video.</p>
+  </div>
+
+  <section id="trace" class="wrap" aria-labelledby="trace-h">
+    <h2 id="trace-h">From one line of code to one scene</h2>
+    <p class="sub">Before anything is animated, Claude writes <code style="font:500 .9em var(--mono)">FLOW.md</code>: every pipeline, step and branch, with the file, the line and the exact code. A script rejects any quote that is not at that line. Only then does a step become a scene.</p>
+    <div class="trace">
+      <div class="flow" aria-label="Excerpt from FLOW.md">
+        <div class="h">P2.4 Refund decision</div>
+        <div class="ref">src/refunds/policy.ts:14</div>
+        <code><span class="ln">13</span>const limit = settings.autoRefundLimit;</code>
+        <code class="hit"><span class="ln">14</span>if (refund.amount &lt;= limit) {</code>
+        <code><span class="ln">15</span>  return approve(refund);</code>
+        <code><span class="ln">17</span>return askManager(refund);</code>
+        <div class="b"><b>B2.4a</b> under the limit: refunded automatically<br><b>B2.4b</b> over the limit: a manager approves first</div>
+      </div>
+      <figure>
+        <div class="shot"><img data-scene="decision" src="assets/scenes/white/decision.jpg" width="1280" height="720" alt="Decision scene: a refund reaches the question 'Is the refund under the limit?' and takes the automatic branch, with the manager branch shown beside it" loading="lazy"></div>
+        <figcaption><b>The same step, in the video.</b> Both branches are shown, because every branch in <span style="font-family:var(--mono);font-size:.92em">FLOW.md</span> must appear or be listed as left out, with a reason.</figcaption>
+      </figure>
     </div>
   </section>
+
+  <section id="studio" class="wrap" aria-labelledby="studio-h">
+    <h2 id="studio-h">One storyboard, every screen</h2>
+    <p class="sub">Each video renders in 16:9, 1:1 and 9:16 at once. Backgrounds are white by default; switch to dark or your brand colour and every card, icon and glow adjusts. Nothing is ever cut by the frame: the render stops if anything would be.</p>
+    <div class="studio">
+      <form class="controls" aria-label="Preview options" onsubmit="return false">
+        <fieldset>
+          <legend>Background</legend>
+          <div class="seg">
+            <input type="radio" name="bg" id="bg-white" value="white" checked><label for="bg-white"><i class="sw" style="background:#fff"></i>White</label>
+            <input type="radio" name="bg" id="bg-dark" value="dark"><label for="bg-dark"><i class="sw" style="background:#0A0F1E"></i>Dark</label>
+            <input type="radio" name="bg" id="bg-brand" value="brand"><label for="bg-brand"><i class="sw" style="background:#0B2B26"></i>#0B2B26</label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Format</legend>
+          <div class="seg">
+            <input type="radio" name="fmt" id="f-169" value="16x9" checked><label for="f-169">16:9</label>
+            <input type="radio" name="fmt" id="f-11" value="1x1"><label for="f-11">1:1</label>
+            <input type="radio" name="fmt" id="f-916" value="9x16"><label for="f-916">9:16</label>
+          </div>
+        </fieldset>
+        <p>Pick yours with <code>--bg white</code>, <code>--bg dark</code> or <code>--bg "#0B2B26"</code>.</p>
+      </form>
+      <div class="stage">
+        <img id="studio-img" src="assets/formats/white-16x9.jpg" alt="Agents scene in 16:9 on a white background: a planner, a researcher and a writer passing work, with an activity log">
+      </div>
+    </div>
+  </section>
+
+  <section id="scenes" class="wrap" aria-labelledby="scenes-h">
+    <h2 id="scenes-h">Scenes picked from what your code does</h2>
+    <p class="sub">An agent system gets agents at work. A RAG app gets a chat with its sources. An API gets a request being checked. The order of the video follows the code too, so no two repos get the same film.</p>
+    <div class="gallery">
+      <figure class="wide"><img data-scene="showcase" src="assets/scenes/white/showcase.jpg" width="1280" height="720" alt="A product dashboard in a tilted glass window with callout cards around it" loading="lazy"><h3>Showcase</h3><p>Your product in a 3D glass window, with callouts around it.</p></figure>
+      <figure class="wide"><img data-scene="agents" src="assets/scenes/white/agents.jpg" width="1280" height="720" alt="Three agents passing messages and calling tools, with an activity log" loading="lazy"><h3>Agents</h3><p>Planners, researchers, tool calls and handoffs, step by step.</p></figure>
+      <figure><img data-scene="chat" src="assets/scenes/white/chat.jpg" width="1280" height="720" alt="A chat window where the assistant answers with source chips" loading="lazy"><h3>Chat</h3><p>Typing, streamed answers and the sources behind them.</p></figure>
+      <figure><img data-scene="request" src="assets/scenes/white/request.jpg" width="1280" height="720" alt="A request travelling to a payments service that ticks off checks and confirms" loading="lazy"><h3>Request</h3><p>An API call checked, saved and answered.</p></figure>
+      <figure><img data-scene="checklist" src="assets/scenes/white/checklist.jpg" width="1280" height="720" alt="A list of checks ticking one by one, ending in approval" loading="lazy"><h3>Checklist</h3><p>Validations, fraud rules and guardrails.</p></figure>
+      <figure><img data-scene="pipeline" src="assets/scenes/white/pipeline.jpg" width="1280" height="720" alt="A ticket record gaining fields as it passes pipeline stages" loading="lazy"><h3>Pipeline</h3><p>One record changing as it moves through each stage.</p></figure>
+      <figure><img data-scene="queue" src="assets/scenes/white/queue.jpg" width="1280" height="720" alt="Jobs moving from a queue to two workers and into a sent lane" loading="lazy"><h3>Queue</h3><p>Background jobs, workers and retries.</p></figure>
+      <figure><img data-scene="code" src="assets/scenes/white/code.jpg" width="1280" height="720" alt="An editor window with real code and the limit check highlighted" loading="lazy"><h3>Code</h3><p>The one rule developers should see, copied from the repo.</p></figure>
+      <figure class="wide"><img data-scene="headline" src="assets/scenes/white/headline.jpg" width="1280" height="720" alt="A large headline under a sparkle emblem with light lines" loading="lazy"><h3>Headline</h3><p>Section titles with an emblem and light lines.</p></figure>
+      <figure class="wide"><img data-scene="orb" src="assets/scenes/white/orb.jpg" width="1280" height="720" alt="A headline inside a glass orb with orbiting rings" loading="lazy"><h3>Orb</h3><p>A softer title for the next chapter of the story.</p></figure>
+    </div>
+    <p class="gallery-tools">Real screenshots of your running app can join too, with highlights measured from the page.</p>
+  </section>
+
+  <section class="wrap" aria-labelledby="how-h">
+    <h2 id="how-h">Accuracy first, then story, then motion</h2>
+    <div class="process">
+      <ol>
+        <li><b>Graph the code</b><span>Tree-sitter indexes 11 languages. Claude asks “who calls this?” instead of reading whole files, so large repos stay cheap.</span></li>
+        <li><b>Map every step</b><span><code>FLOW.md</code> lists each pipeline, step and branch with <code>file:line</code> and the exact code.</span></li>
+        <li><b>Check every claim</b><span>A script confirms each file, line and quote. A fresh reviewer agent checks what they mean.</span></li>
+        <li><b>Animate the story</b><span>Plain-language scenes in your brand, with original music, in three formats, plus a post to share.</span></li>
+      </ol>
+      <div class="term" aria-label="Example renderer output">
+        <div><span class="p">$</span> node render.mjs flow-video/storyboard.json</div>
+        <div class="dim">Style: neural, light background #FFFFFF</div>
+        <div><span class="ok">Coverage</span> steps 31/31  branches 12/12</div>
+        <div><span class="fit">FIT</span> [9x16] scene 4 (decision): moved inside</div>
+        <div class="dim">    the safe area</div>
+        <div>Music: original track generated</div>
+        <div>Rendering 16x9, 1x1, 9x16 at 30 fps</div>
+        <div><span class="ok">DONE</span> flow-video/flow-16x9.mp4 (1:23)</div>
+        <div><span class="ok">DONE</span> flow-video/flow-1x1.mp4  (1:23)</div>
+        <div><span class="ok">DONE</span> flow-video/flow-9x16.mp4 (1:23)</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" aria-labelledby="trust-h">
+    <h2 id="trust-h">Built not to make things up</h2>
+    <p class="sub">The video can only be as accurate as the map, and the map can only claim what the code shows.</p>
+    <div class="rules">
+      <div><b>Cited, line by line</b><span>Every step and branch cites <code style="font:500 .9em var(--mono)">file:line</code> and the exact code. Anything that does not match is rejected.</span></div>
+      <div><b>Nothing skipped</b><span>Every entry point, step and branch is shown, or listed as left out with a reason. Big projects become chapters, not shortcuts.</span></div>
+      <div><b>No borrowed claims</b><span>“Instantly”, “secure” and “always” are flagged unless the code proves them.</span></div>
+      <div><b>Bugs stay visible</b><span>Suspected bugs found while tracing are reported, not animated away.</span></div>
+    </div>
+  </section>
+
+  <section class="wrap" aria-labelledby="look-h">
+    <h2 id="look-h">It looks like your product</h2>
+    <p class="sub">It reads your brand colours and fonts from Tailwind, CSS, theme files, Android, Flutter or iOS, then picks a style for your domain.</p>
+    <div class="presets">
+      <div class="preset"><i style="background:#3B82F6"></i><div><b>launch</b><small>product launches</small></div></div>
+      <div class="preset"><i style="background:#7C5CFF"></i><div><b>midnight</b><small>anything</small></div></div>
+      <div class="preset"><i style="background:#D946EF"></i><div><b>neural</b><small>AI and agents</small></div></div>
+      <div class="preset"><i style="background:#10B981"></i><div><b>ledger</b><small>fintech</small></div></div>
+      <div class="preset"><i style="background:#EA580C"></i><div><b>storefront</b><small>e-commerce</small></div></div>
+      <div class="preset"><i style="background:#0D9488"></i><div><b>clinic</b><small>healthcare</small></div></div>
+      <div class="preset"><i style="background:#16A34A"></i><div><b>terminal</b><small>developer tools</small></div></div>
+      <div class="preset"><i style="background:#2563EB"></i><div><b>boardroom</b><small>enterprise</small></div></div>
+      <div class="preset"><i style="background:#0891B2"></i><div><b>ocean</b><small>data pipelines</small></div></div>
+      <div class="preset"><i style="background:#8B5CF6"></i><!-- taste-skill-ignore: the candy preset's real accent --><div><b>candy</b><small>playful apps</small></div></div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="cta">
+      <div>
+        <h2>Make the video of your codebase</h2>
+        <p>Free and MIT licensed. Runs wherever Claude Code runs: the CLI, VS Code, JetBrains, the desktop app and the web.</p>
+      </div>
+      <div class="install">
+        <pre id="cmd2"><span>&gt; </span>/plugin marketplace add faizankhan789/codebase-flow-video
+<span>&gt; </span>/plugin install codebase-flow-video@codebase-flow-video</pre>
+        <button type="button" class="copy" data-copy="cmd2">Copy</button>
+      </div>
+    </div>
+  </div>
 </main>
-<footer>
-  <span>MIT licensed · by Faizan Khan</span>
-  <span>The video above was rendered by the plugin from a hand-written storyboard.</span>
+
+<footer class="wrap">
+  <span>MIT licensed. Made by Faizan Khan.</span>
+  <a href="https://github.com/faizankhan789/codebase-flow-video">github.com/faizankhan789/codebase-flow-video</a>
 </footer>
+
 <script>
-  const v = document.getElementById('hero');
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
-  if (reduce.matches) { v.controls = true; } else { v.autoplay = true; v.play().catch(() => { v.controls = true; }); }
-  document.getElementById('copy').addEventListener('click', async (e) => {
-    try { await navigator.clipboard.writeText(document.getElementById('cmd').textContent); e.target.textContent = 'Copied'; }
-    catch { e.target.textContent = 'Select the text'; }
-    setTimeout(() => { e.target.textContent = 'Copy'; }, 1800);
-  });
+  // Hero video: play muted unless the viewer prefers reduced motion.
+  const reel = document.getElementById('reel');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) reel.controls = true; else { reel.autoplay = true; reel.play().catch(() => { reel.controls = true; }); }
+
+  // Copy buttons. The prompt marks are not part of the commands.
+  document.querySelectorAll('.copy').forEach((btn) => btn.addEventListener('click', async () => {
+    const text = [...document.getElementById(btn.dataset.copy).childNodes].filter((n) => !(n.nodeType === 1 && n.tagName === 'SPAN')).map((n) => n.textContent).join('').trim();
+    try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; } catch { btn.textContent = 'Select the text'; }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+  }));
+
+  // Background and format switcher. The background choice also re-colours the scene gallery.
+  const names = { white: 'a white background', dark: 'a dark background', brand: 'the brand colour #0B2B26' };
+  const studio = document.getElementById('studio-img');
+  const swap = (img, src, alt) => {
+    if (img.getAttribute('src') === src) return;
+    const next = new Image();
+    next.onload = () => { img.classList.add('swap'); setTimeout(() => { img.src = src; if (alt) img.alt = alt; img.classList.remove('swap'); }, reduce ? 0 : 140); };
+    next.src = src;
+  };
+  const update = () => {
+    const bg = document.querySelector('input[name=bg]:checked').value;
+    const fmt = document.querySelector('input[name=fmt]:checked').value;
+    swap(studio, `assets/formats/${bg}-${fmt}.jpg`, `Agents scene in ${fmt.replace('x', ':')} on ${names[bg]}: a planner, a researcher and a writer passing work, with an activity log`);
+    document.querySelectorAll('img[data-scene]').forEach((img) => swap(img, `assets/scenes/${bg}/${img.dataset.scene}.jpg`));
+  };
+  document.querySelectorAll('.controls input').forEach((i) => i.addEventListener('change', update));
 </script>
 </body>
 </html>
