@@ -1,0 +1,333 @@
+{
+  "title": "codebase-flow-video",
+  "subtitle": "Your codebase, explained in one video",
+  "style": {
+    "preset": "launch"
+  },
+  "journey": {
+    "item": "Your repo",
+    "icon": "code"
+  },
+  "intro": {
+    "highlights": [
+      {
+        "label": "Reads the code",
+        "icon": "search"
+      },
+      {
+        "label": "Checks every claim",
+        "icon": "shield"
+      },
+      {
+        "label": "Animates it",
+        "icon": "video"
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "chapter": "Accuracy first",
+      "visual": {
+        "type": "headline",
+        "text": "Read the code",
+        "sub": "A code graph, not a guess"
+      }
+    },
+    {
+      "chapter": "Accuracy first",
+      "title": "A team on your repo",
+      "caption": "Claude asks the code graph who calls what, writes the map, and a fresh reviewer checks it.",
+      "visual": {
+        "type": "agents",
+        "agents": [
+          {
+            "id": "c",
+            "name": "Claude",
+            "role": "Traces every step",
+            "icon": "sparkles"
+          },
+          {
+            "id": "r",
+            "name": "Reviewer",
+            "role": "Checks the claims",
+            "icon": "shield"
+          }
+        ],
+        "tools": [
+          {
+            "id": "g",
+            "name": "Code graph",
+            "icon": "branch"
+          },
+          {
+            "id": "v",
+            "name": "Quote checker",
+            "icon": "check"
+          }
+        ],
+        "steps": [
+          {
+            "from": "c",
+            "to": "g",
+            "type": "tool",
+            "text": "Who calls checkout()?"
+          },
+          {
+            "from": "c",
+            "to": "v",
+            "type": "tool",
+            "text": "Check every file and line"
+          },
+          {
+            "from": "c",
+            "to": "r",
+            "type": "handoff",
+            "text": "Review the map"
+          },
+          {
+            "from": "r",
+            "to": "c",
+            "type": "result",
+            "text": "Every claim backed"
+          }
+        ]
+      }
+    },
+    {
+      "chapter": "Accuracy first",
+      "title": "Every step has an address",
+      "caption": "Each step names its file, its line and the exact code. Anything that does not match is rejected.",
+      "visual": {
+        "type": "code",
+        "file": "FLOW.md",
+        "startLine": 41,
+        "highlight": [
+          44
+        ],
+        "lines": [
+          "### P2.4 Refund decision",
+          "`src/refunds/policy.ts:14`",
+          "```ts",
+          "if (refund.amount <= limit) {",
+          "```",
+          "- B2.4a under the limit: refunded automatically",
+          "- B2.4b over the limit: a manager approves first"
+        ],
+        "note": "Copied from the code itself"
+      }
+    },
+    {
+      "chapter": "Accuracy first",
+      "title": "Checked before it is animated",
+      "caption": "Nothing reaches the video until every file, line and branch checks out.",
+      "visual": {
+        "type": "checklist",
+        "title": "Before animating",
+        "subject": "FLOW.md",
+        "items": [
+          {
+            "label": "Every file exists",
+            "ok": true
+          },
+          {
+            "label": "Every line matches",
+            "ok": true
+          },
+          {
+            "label": "Every quote is exact",
+            "ok": true
+          },
+          {
+            "label": "Every branch is shown",
+            "ok": true
+          }
+        ],
+        "result": {
+          "label": "Ready to animate",
+          "ok": true
+        }
+      }
+    },
+    {
+      "chapter": "Tell the story",
+      "visual": {
+        "type": "headline",
+        "variant": "orb",
+        "text": "Not a flowchart",
+        "sub": "Scenes picked from what your code does"
+      }
+    },
+    {
+      "chapter": "Tell the story",
+      "title": "From repo to video",
+      "caption": "Your repo picks up a map, a check and a story, then comes out as a video in three formats.",
+      "visual": {
+        "type": "pipeline",
+        "item": {
+          "title": "Your repo",
+          "icon": "folder",
+          "fields": [
+            [
+              "steps mapped",
+              "0"
+            ],
+            [
+              "claims checked",
+              "0"
+            ],
+            [
+              "video",
+              "none"
+            ]
+          ]
+        },
+        "stages": [
+          {
+            "label": "Map",
+            "effect": "change",
+            "field": "steps mapped",
+            "value": "31"
+          },
+          {
+            "label": "Verify",
+            "effect": "change",
+            "field": "claims checked",
+            "value": "31"
+          },
+          {
+            "label": "Story",
+            "effect": "add",
+            "field": "scenes",
+            "value": "12"
+          },
+          {
+            "label": "Render",
+            "effect": "change",
+            "field": "video",
+            "value": "3 formats"
+          }
+        ],
+        "output": {
+          "label": "Ready to share",
+          "icon": "send"
+        }
+      }
+    },
+    {
+      "chapter": "Tell the story",
+      "title": "Nothing cut off",
+      "caption": "Every frame is checked. Anything that would leave the screen is fitted, or the render stops.",
+      "visual": {
+        "type": "decision",
+        "item": "Scene 4 in 9:16",
+        "question": "Is everything inside the frame?",
+        "chosen": 1,
+        "options": [
+          {
+            "label": "yes",
+            "outcome": "Rendered as is",
+            "ok": true
+          },
+          {
+            "label": "no",
+            "outcome": "Scaled to fit",
+            "icon": "refresh",
+            "tone": "warn"
+          }
+        ]
+      }
+    },
+    {
+      "chapter": "Share it",
+      "visual": {
+        "type": "headline",
+        "text": "Three formats",
+        "sub": "Wide, square and vertical, with music"
+      }
+    },
+    {
+      "chapter": "Share it",
+      "title": "Everything you need",
+      "visual": {
+        "type": "showcase",
+        "ui": {
+          "app": "flow-video",
+          "nav": [
+            {
+              "label": "Videos",
+              "icon": "video"
+            },
+            {
+              "label": "FLOW.md",
+              "icon": "file"
+            },
+            {
+              "label": "Coverage",
+              "icon": "check"
+            },
+            {
+              "label": "Share post",
+              "icon": "send"
+            }
+          ],
+          "greeting": "Your video is ready",
+          "headline": "Your repo, explained",
+          "actions": [
+            "16:9",
+            "1:1",
+            "9:16"
+          ],
+          "widgets": [
+            {
+              "type": "stat",
+              "title": "Steps shown",
+              "value": "31/31",
+              "sub": "nothing skipped"
+            },
+            {
+              "type": "ring",
+              "title": "Branches shown",
+              "value": 100
+            },
+            {
+              "type": "list",
+              "title": "Files",
+              "items": [
+                "flow-16x9.mp4",
+                "flow-1x1.mp4",
+                "flow-9x16.mp4"
+              ]
+            },
+            {
+              "type": "chat",
+              "title": "Ask",
+              "value": "Make a video of this repo"
+            }
+          ]
+        },
+        "callouts": [
+          {
+            "title": "Three formats",
+            "text": "Wide, square and vertical",
+            "icon": "video"
+          },
+          {
+            "title": "Original music",
+            "text": "Made for each video",
+            "icon": "bell"
+          },
+          {
+            "title": "Share post",
+            "text": "Written for you",
+            "icon": "send"
+          }
+        ]
+      }
+    }
+  ],
+  "outro": {
+    "caption": "Free on GitHub. Install it in Claude Code and ask for a video.",
+    "kicker": "codebase-flow-video",
+    "cta": "github.com/faizankhan789/codebase-flow-video"
+  }
+}

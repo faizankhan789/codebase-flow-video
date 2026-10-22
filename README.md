@@ -2,7 +2,7 @@
 
 **Your codebase, explained in one video. Checked against the real code.**
 
-[![codebase-flow-video explaining itself: chat, code graph, accuracy checks, agents, scenes that fit the code](docs/assets/promo-poster.jpg)](docs/assets/promo-16x9.mp4)
+[![codebase-flow-video explaining itself: agents tracing the code, a cited FLOW.md step, checks, the frame check and the finished video](docs/assets/promo-poster.jpg)](docs/assets/promo-16x9.mp4)
 
 `codebase-flow-video` is a Claude Code plugin that reads your project with a code graph, checks every claim against the code, and turns it into an animated explainer that **shows the product working**: agents talking and calling tools, a chat answering with sources, requests being checked, records changing as they move through a pipeline, real screenshots of your app. It uses your brand colours and fonts in a vivid, layered look (deep colour fields, translucent glass cards, gradient badges), adds an original music track, and renders 16:9, 1:1 and 9:16, with a post ready to share.
 
